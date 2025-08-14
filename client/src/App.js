@@ -92,12 +92,16 @@ const AmpliFiApp = () => {
       const response = await fetch('http://localhost:5000/api/hotels');
       if (response.ok) {
         const data = await response.json();
-        if (data.success && data.hotels.length > 0) {
+        if (data.success && data.hotels && data.hotels.length > 0) {
           setHotels(data.hotels);
+        } else {
+          console.log('No hotels found in database, using default');
         }
+      } else {
+        console.log('Backend not available, using default hotel data');
       }
     } catch (error) {
-      console.log('Using default hotel data');
+      console.log('Using default hotel data:', error.message);
     }
   };
 
@@ -110,17 +114,24 @@ const AmpliFiApp = () => {
       });
       
       if (response.ok) {
-        await loadHotels();
-        setShowAddHotel(false);
-        setNewHotel({
-          hotelName: '',
-          location: '',
-          totalRooms: 100,
-          baseOccupancy: 65,
-          minPrice: 80,
-          maxPrice: 500,
-          starRating: 3
-        });
+        const data = await response.json();
+        if (data.success) {
+          await loadHotels();
+          setShowAddHotel(false);
+          setNewHotel({
+            hotelName: '',
+            location: '',
+            totalRooms: 100,
+            baseOccupancy: 65,
+            minPrice: 80,
+            maxPrice: 500,
+            starRating: 3
+          });
+        } else {
+          console.error('Failed to create hotel:', data.error);
+        }
+      } else {
+        console.error('Failed to create hotel: HTTP', response.status);
       }
     } catch (error) {
       console.error('Error adding hotel:', error);
@@ -151,7 +162,11 @@ const AmpliFiApp = () => {
           }));
           setKpiData(data.kpis);
           setShowPriceOverride(false);
+        } else {
+          console.error('Price override failed:', data.error);
         }
+      } else {
+        console.error('Price override request failed:', response.status);
       }
     } catch (error) {
       console.error('Error overriding price:', error);
@@ -233,14 +248,18 @@ const AmpliFiApp = () => {
           throw new Error(data.error || 'Unknown API error');
         }
       } else {
-        throw new Error(`Backend unavailable (HTTP ${response.status})`);
+        const errorText = await response.text();
+        throw new Error(`Backend unavailable (HTTP ${response.status}): ${errorText}`);
       }
     } catch (error) {
       console.error('Backend Error:', error);
       setError(error.message);
       setConnectionStatus('error');
       
-      alert(`Connection Error: ${error.message}\n\nMake sure the backend is running:\n1. Open terminal in VS Code\n2. cd backend\n3. python app.py`);
+      // Show more helpful error message
+      if (error.message.includes('Failed to fetch')) {
+        setError('Cannot connect to backend server. Make sure it is running on http://localhost:5000');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -249,11 +268,11 @@ const AmpliFiApp = () => {
   // Auto-refresh when in auto mode
   useEffect(() => {
     const hotel = getCurrentHotel();
-    if (hotel?.autoMode) {
+    if (hotel?.autoMode && currentRecommendation) {
       const interval = setInterval(getRecommendation, 300000); // 5 minutes
       return () => clearInterval(interval);
     }
-  }, [getCurrentHotel()?.autoMode, getRecommendation]);
+  }, [getCurrentHotel()?.autoMode, getRecommendation, currentRecommendation]);
 
   const updateHotelConfig = (key, value) => {
     setHotels(prev => prev.map((hotel, index) => 
@@ -290,7 +309,7 @@ const AmpliFiApp = () => {
           </div>
           <p className="text-red-600 text-sm mt-1">{error}</p>
           <p className="text-red-500 text-xs mt-2">
-            Make sure backend is running: <code>cd backend && python app.py</code>
+            Make sure backend is running: <code className="bg-red-100 px-1 rounded">cd server && python app.py</code>
           </p>
         </div>
       )}
@@ -321,7 +340,7 @@ const AmpliFiApp = () => {
             className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
             <RefreshCw className={`h-5 w-5 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            {isLoading ? 'Refresh AI' : 'Refresh AI'}
+            {isLoading ? 'Getting AI Insights...' : 'Get AI Recommendation'}
           </button>
         </div>
       </div>
@@ -575,6 +594,33 @@ const AmpliFiApp = () => {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Start Guide when no recommendation */}
+      {!currentRecommendation && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <div className="flex items-center mb-4">
+            <Zap className="h-6 w-6 text-blue-600 mr-2" />
+            <h3 className="text-lg font-semibold text-blue-900">Welcome to AmpliFi Revenue Management</h3>
+          </div>
+          <p className="text-blue-800 mb-4">
+            Get started by clicking "Get AI Recommendation" to receive intelligent pricing insights powered by real-time market data.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div className="bg-white p-4 rounded-lg">
+              <h4 className="font-semibold text-blue-900 mb-2">🤖 AI-Powered Pricing</h4>
+              <p className="text-blue-700">Advanced algorithms analyze competitor rates, demand patterns, and market events</p>
+            </div>
+            <div className="bg-white p-4 rounded-lg">
+              <h4 className="font-semibold text-blue-900 mb-2">📊 Real-Time Insights</h4>
+              <p className="text-blue-700">Live market data and event detection for optimal revenue management</p>
+            </div>
+            <div className="bg-white p-4 rounded-lg">
+              <h4 className="font-semibold text-blue-900 mb-2">⚡ Auto-Pilot Mode</h4>
+              <p className="text-blue-700">Automated pricing updates with customizable boundaries and manual override</p>
             </div>
           </div>
         </div>
