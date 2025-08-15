@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 import time
 import re
+from tools import EnhancedHotelAnalytics  # Corrected: Added this import
 
 # Load environment variables
 load_dotenv()
@@ -160,7 +161,39 @@ def init_database():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Add other table creation statements here if needed
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ancillary_revenue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, hotel_id INTEGER, name TEXT NOT NULL,
+                description TEXT, suggested_price REAL, type TEXT,
+                FOREIGN KEY (hotel_id) REFERENCES hotel_configs (id)
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ota_commissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, hotel_id INTEGER, ota_name TEXT NOT NULL,
+                commission_rate REAL NOT NULL,
+                FOREIGN KEY (hotel_id) REFERENCES hotel_configs (id)
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS competitor_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, location TEXT, hotel_name TEXT,
+                price REAL, distance TEXT, source TEXT, date_collected TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS market_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, location TEXT, event_name TEXT,
+                event_date TEXT, impact_level TEXT, description TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS price_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, location TEXT, target_date TEXT,
+                recommended_price REAL, occupancy REAL, revpar REAL, adr REAL,
+                revenue REAL, confidence REAL
+            )
+        ''')
         conn.commit()
         logger.info("Database initialized successfully")
 
@@ -374,6 +407,43 @@ def price_override():
         
     except Exception as e:
         logger.error(f"Error in price override: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/demand-forecast', methods=['POST'])
+def demand_forecast():
+    try:
+        data = request.get_json()
+        location = data.get('location', {})
+        hotel_config = data.get('hotelConfig', {})
+        analytics = EnhancedHotelAnalytics()
+        forecast = analytics.get_demand_forecast(location.get('city'), location.get('country'), hotel_config)
+        return jsonify({"success": True, "forecast": forecast})
+    except Exception as e:
+        logger.error(f"Error in demand forecast endpoint: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/ancillary-revenue', methods=['POST'])
+def ancillary_revenue():
+    try:
+        data = request.get_json()
+        hotel_config = data.get('hotelConfig', {})
+        analytics = EnhancedHotelAnalytics()
+        opportunities = analytics.get_upsell_opportunities(hotel_config)
+        return jsonify({"success": True, "opportunities": opportunities})
+    except Exception as e:
+        logger.error(f"Error in ancillary revenue endpoint: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/direct-booking-intelligence', methods=['POST'])
+def direct_booking_intelligence():
+    try:
+        data = request.get_json()
+        hotel_config = data.get('hotelConfig', {})
+        analytics = EnhancedHotelAnalytics()
+        savings = analytics.calculate_direct_booking_savings(hotel_config)
+        return jsonify({"success": True, "savings": savings})
+    except Exception as e:
+        logger.error(f"Error in direct booking intelligence endpoint: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':

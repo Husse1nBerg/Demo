@@ -1,35 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
+import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { 
-  DollarSign, TrendingUp, Users, Calendar, MapPin, Settings, 
-  Globe, Zap, Target, BarChart3, Activity, Hotel,
-  RefreshCw, Play, Pause, Eye, EyeOff, ChevronDown, ChevronUp,
-  Search, Filter, Download, Bell, Wifi, WifiOff, Plus, X,
-  Star, Edit, Crown, TrendingDown
+import {
+  DollarSign, TrendingUp, Users, Calendar, MapPin, Settings,
+  Zap, Target, BarChart3, Activity, Hotel,
+  RefreshCw, Play, Pause, ChevronDown, ChevronUp,
+  Wifi, WifiOff, Plus, X,
+  Star, Crown, Package, Briefcase, Info
 } from 'lucide-react';
 
-const initialState = {
-  isLoading: false,
-  activeTab: 'dashboard',
-  showAdvanced: false,
-  showAddHotel: false,
-  showPriceOverride: false,
-  expandedAnalysis: false,
-};
-
-function uiReducer(state, action) {
-  switch (action.type) {
-    case 'SET_LOADING':
-      return { ...state, isLoading: action.payload };
-    case 'SET_ACTIVE_TAB':
-      return { ...state, activeTab: action.payload };
-    // ... other UI state actions
-    default:
-      throw new Error();
-  }
-}
 
 const AmpliFiApp = () => {
   // Core State Management
@@ -49,23 +29,25 @@ const AmpliFiApp = () => {
       autoMode: true
     }
   ]);
-  
+
   // UI State
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [showAddHotel, setShowAddHotel] = useState(false);
   const [showPriceOverride, setShowPriceOverride] = useState(false);
   const [expandedAnalysis, setExpandedAnalysis] = useState(false);
-  
+
   // Data State
   const [currentRecommendation, setCurrentRecommendation] = useState(null);
   const [competitorData, setCompetitorData] = useState([]);
   const [kpiData, setKpiData] = useState(null);
   const [priceHistory, setPriceHistory] = useState([]);
   const [marketEvents, setMarketEvents] = useState([]);
+  const [demandForecast, setDemandForecast] = useState({ loading: true, data: [] });
+  const [ancillaryOpportunities, setAncillaryOpportunities] = useState({ loading: true, data: [] });
+  const [directBookingSavings, setDirectBookingSavings] = useState(null);
   const [error, setError] = useState(null);
-  
+
   // Real-time connection status
   const [connectionStatus, setConnectionStatus] = useState('connected');
 
@@ -79,14 +61,14 @@ const AmpliFiApp = () => {
     maxPrice: 500,
     starRating: 3
   });
-  
+
   const [priceOverride, setPriceOverride] = useState({
     desiredRank: 1,
     targetPrice: 0
   });
 
   // Get current hotel config
-  const getCurrentHotel = () => hotels[currentHotel] || hotels[0];
+  const getCurrentHotel = useCallback(() => hotels[currentHotel] || hotels[0], [hotels, currentHotel]);
 
   // Location options for North America
   const locations = [
@@ -101,12 +83,6 @@ const AmpliFiApp = () => {
     { city: 'Las Vegas', country: 'USA', region: 'NV' },
     { city: 'San Francisco', country: 'USA', region: 'CA' }
   ];
-
-  // Generate initial demo data
-  useEffect(() => {
-    generateDemoHistory();
-    loadHotels();
-  }, [selectedLocation]);
 
   const loadHotels = async () => {
     try {
@@ -126,6 +102,39 @@ const AmpliFiApp = () => {
     }
   };
 
+  // Generate initial demo data
+  useEffect(() => {
+    const generateDemoHistory = () => {
+        const history = [];
+        const basePrice = 120 + Math.random() * 80;
+
+        for (let i = 14; i >= 0; i--) {
+          const date = new Date();
+          date.setDate(date.getDate() - i);
+    
+          const seasonalMultiplier = 0.8 + (Math.sin((date.getMonth() / 12) * 2 * Math.PI) * 0.3);
+          const weekendMultiplier = [0, 6].includes(date.getDay()) ? 1.2 : 1.0;
+          const randomVariation = 0.9 + Math.random() * 0.2;
+    
+          const price = Math.round(basePrice * seasonalMultiplier * weekendMultiplier * randomVariation);
+          const occupancy = Math.min(95, Math.max(20, 60 + Math.random() * 30));
+    
+          history.push({
+            date: date.toISOString().split('T')[0],
+            price,
+            occupancy: Math.round(occupancy),
+            revpar: Math.round(price * (occupancy / 100)),
+            adr: price
+          });
+        }
+    
+        setPriceHistory(history);
+      };
+
+    generateDemoHistory();
+    loadHotels();
+  }, [selectedLocation]);
+
   const addNewHotel = async () => {
     try {
       const response = await fetch(`${process.env.REACT_APP_API_URL}/api/hotels`, {
@@ -133,7 +142,7 @@ const AmpliFiApp = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newHotel)
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
@@ -170,7 +179,7 @@ const AmpliFiApp = () => {
           hotelConfig: getCurrentHotel()
         })
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
@@ -193,39 +202,12 @@ const AmpliFiApp = () => {
       console.error('Error overriding price:', error);
     }
   };
-
-  const generateDemoHistory = () => {
-    const history = [];
-    const basePrice = 120 + Math.random() * 80;
-    
-    for (let i = 14; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      
-      const seasonalMultiplier = 0.8 + (Math.sin((date.getMonth() / 12) * 2 * Math.PI) * 0.3);
-      const weekendMultiplier = [0, 6].includes(date.getDay()) ? 1.2 : 1.0;
-      const randomVariation = 0.9 + Math.random() * 0.2;
-      
-      const price = Math.round(basePrice * seasonalMultiplier * weekendMultiplier * randomVariation);
-      const occupancy = Math.min(95, Math.max(20, 60 + Math.random() * 30));
-      
-      history.push({
-        date: date.toISOString().split('T')[0],
-        price,
-        occupancy: Math.round(occupancy),
-        revpar: Math.round(price * (occupancy / 100)),
-        adr: price
-      });
-    }
-    
-    setPriceHistory(history);
-  };
-
+  
   const getRecommendation = useCallback(async () => {
     setIsLoading(true);
     setConnectionStatus('connecting');
     setError(null);
-    
+
     try {
       const hotel = getCurrentHotel();
       console.log('Making request to backend...');
@@ -247,7 +229,7 @@ const AmpliFiApp = () => {
       if (response.ok) {
         const data = await response.json();
         console.log('Response data:', data);
-        
+
         if (data.success) {
           const result = data.data;
           setCurrentRecommendation(result);
@@ -255,7 +237,7 @@ const AmpliFiApp = () => {
           setKpiData(result.kpis || {});
           setMarketEvents(result.market_events || []);
           setConnectionStatus('connected');
-          
+
           // Add to history
           const newEntry = {
             date: targetDate,
@@ -276,15 +258,15 @@ const AmpliFiApp = () => {
       console.error('Backend Error:', error);
       setError(error.message);
       setConnectionStatus('error');
-      
+
       // Show more helpful error message
       if (error.message.includes('Failed to fetch')) {
-        setError('Cannot connect to backend server. Make sure it is running on ${process.env.REACT_APP_API_URL}');
+        setError(`Cannot connect to backend server. Make sure it is running on ${process.env.REACT_APP_API_URL}`);
       }
     } finally {
       setIsLoading(false);
     }
-  }, [selectedLocation, targetDate, currentHotel, hotels]);
+  }, [selectedLocation, targetDate, getCurrentHotel]);
 
   // Auto-refresh when in auto mode
   useEffect(() => {
@@ -293,10 +275,61 @@ const AmpliFiApp = () => {
       const interval = setInterval(getRecommendation, 300000); // 5 minutes
       return () => clearInterval(interval);
     }
-  }, [getCurrentHotel()?.autoMode, getRecommendation, currentRecommendation]);
+  }, [currentRecommendation, getRecommendation, getCurrentHotel]);
+
+  const fetchAncillaryData = useCallback(async () => {
+    setAncillaryOpportunities({ loading: true, data: [] });
+    const hotel = getCurrentHotel();
+    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/ancillary-revenue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hotelConfig: hotel }),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) setAncillaryOpportunities({ loading: false, data: data.opportunities });
+    } else {
+      setAncillaryOpportunities({ loading: false, data: [] });
+    }
+  }, [getCurrentHotel]);
+
+  const fetchDirectBookingData = useCallback(async () => {
+    const hotel = getCurrentHotel();
+    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/direct-booking-intelligence`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hotelConfig: hotel }),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) setDirectBookingSavings(data.savings);
+    }
+  }, [getCurrentHotel]);
+
+  const fetchDemandForecast = useCallback(async () => {
+    setDemandForecast({ loading: true, data: [] });
+    const hotel = getCurrentHotel();
+    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/demand-forecast`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ location: selectedLocation, hotelConfig: hotel }),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) setDemandForecast({ loading: false, data: data.forecast });
+    } else {
+      setDemandForecast({ loading: false, data: [] });
+    }
+  }, [selectedLocation, getCurrentHotel]);
+
+  useEffect(() => {
+    if (activeTab === 'ancillary') fetchAncillaryData();
+    if (activeTab === 'directBooking') fetchDirectBookingData();
+    if (activeTab === 'demandForecast') fetchDemandForecast();
+  }, [activeTab, fetchAncillaryData, fetchDirectBookingData, fetchDemandForecast]);
 
   const updateHotelConfig = (key, value) => {
-    setHotels(prev => prev.map((hotel, index) => 
+    setHotels(prev => prev.map((hotel, index) =>
       index === currentHotel ? { ...hotel, [key]: value } : hotel
     ));
   };
@@ -308,10 +341,10 @@ const AmpliFiApp = () => {
           <Star
             key={star}
             className={`h-5 w-5 ${
-              star <= rating 
-                ? 'text-yellow-400 fill-current' 
+              star <= rating
+                ? 'text-yellow-400 fill-current'
                 : 'text-gray-300'
-            } ${interactive ? 'cursor-pointer hover:text-yellow-300' : ''}`}
+              } ${interactive ? 'cursor-pointer hover:text-yellow-300' : ''}`}
             onClick={interactive ? () => onChange(star) : undefined}
           />
         ))}
@@ -345,9 +378,9 @@ const AmpliFiApp = () => {
             📍 {selectedLocation.city}, {selectedLocation.region}
           </span>
         </div>
-        
+
         <div className="flex items-center space-x-3">
-          <button 
+          <button
             onClick={() => setShowPriceOverride(true)}
             disabled={!currentRecommendation || competitorData.length === 0}
             className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
@@ -355,7 +388,7 @@ const AmpliFiApp = () => {
             <Crown className="h-4 w-4 mr-2" />
             Set Market Position
           </button>
-          <button 
+          <button
             onClick={getRecommendation}
             disabled={isLoading}
             className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
@@ -375,14 +408,14 @@ const AmpliFiApp = () => {
               <p className="text-2xl font-bold text-gray-900">
                 ${currentRecommendation?.recommended_price?.toFixed(2) || '--'}
               </p>
-{currentRecommendation && (
-  <p className="text-sm text-green-600">
-    {currentRecommendation.confidence > 1
-      ? currentRecommendation.confidence
-      : (currentRecommendation.confidence * 100).toFixed(0)}
-    % confidence
-  </p>
-)}
+              {currentRecommendation && (
+                <p className="text-sm text-green-600">
+                  {currentRecommendation.confidence > 1
+                    ? currentRecommendation.confidence
+                    : (currentRecommendation.confidence * 100).toFixed(0)}
+                  % confidence
+                </p>
+              )}
             </div>
             <DollarSign className="h-8 w-8 text-blue-600" />
           </div>
@@ -444,21 +477,21 @@ const AmpliFiApp = () => {
                   {expandedAnalysis ? 'Collapse Analysis' : 'Full Analysis Report'}
                 </button>
               </div>
-              
+
               {/* Research Summary */}
               <div className="bg-white p-4 rounded-lg border border-blue-200 mb-4">
                 <h4 className="font-semibold text-gray-900 mb-2">🔍 Research Summary</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                   <div className="text-center">
-  <div className="text-2xl font-bold text-purple-600">
-    {currentRecommendation.confidence > 1
-      ? currentRecommendation.confidence
-      : (currentRecommendation.confidence * 100).toFixed(0)}
-    %
-  </div>
-  <div className="text-gray-600">Confidence</div>
-  <div className="text-xs text-gray-500">Analysis reliability</div>
-</div>
+                    <div className="text-2xl font-bold text-purple-600">
+                      {currentRecommendation.confidence > 1
+                        ? currentRecommendation.confidence
+                        : (currentRecommendation.confidence * 100).toFixed(0)}
+                      %
+                    </div>
+                    <div className="text-gray-600">Confidence</div>
+                    <div className="text-xs text-gray-500">Analysis reliability</div>
+                  </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-green-600">{marketEvents.length}</div>
                     <div className="text-gray-600">Market Events</div>
@@ -467,10 +500,10 @@ const AmpliFiApp = () => {
                     </div>
                   </div>
                   <div className="text-center">
-  <div className="text-2xl font-bold text-blue-600">{competitorData.length}</div>
-  <div className="text-gray-600">Hotels Analyzed</div>
-  <div className="text-xs text-gray-500">Real competitor data</div>
-</div>
+                    <div className="text-2xl font-bold text-blue-600">{competitorData.length}</div>
+                    <div className="text-gray-600">Hotels Analyzed</div>
+                    <div className="text-xs text-gray-500">Real competitor data</div>
+                  </div>
                 </div>
               </div>
 
@@ -479,7 +512,7 @@ const AmpliFiApp = () => {
                 <h4 className="font-semibold text-blue-900 mb-2">💡 Key Insights</h4>
                 <p className="text-blue-800">{currentRecommendation.reasoning}</p>
               </div>
-              
+
               {/* Strategy Tags */}
               <div className="flex flex-wrap items-center gap-2 mb-4">
                 <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm">
@@ -511,13 +544,13 @@ const AmpliFiApp = () => {
                     {marketEvents.slice(0, 3).map((event, index) => (
                       <div key={index} className="flex items-center justify-between text-sm">
                         <span className="text-yellow-800">
-  {event.source === 'tavily' ? '🔴 LIVE: ' : '🤖 AI: '}{event.name || event.event_name}
-</span>
+                          {event.source === 'tavily' ? '🔴 LIVE: ' : '🤖 AI: '}{event.name || event.event_name}
+                        </span>
                         <span className={`px-2 py-1 rounded text-xs ${
                           event.impact === 'high' ? 'bg-red-100 text-red-700' :
-                          event.impact === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-green-100 text-green-700'
-                        }`}>
+                            event.impact === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-green-100 text-green-700'
+                          }`}>
                           {event.impact} impact
                         </span>
                       </div>
@@ -533,7 +566,7 @@ const AmpliFiApp = () => {
               {expandedAnalysis && currentRecommendation.detailed_analysis && (
                 <div className="bg-white p-6 rounded-lg border border-blue-200 space-y-6">
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">📊 Comprehensive Analysis Report</h4>
-                  
+
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div>
                       <h5 className="font-semibold text-gray-900 mb-3 flex items-center">
@@ -544,7 +577,7 @@ const AmpliFiApp = () => {
                         <p className="text-gray-700 text-sm">{currentRecommendation.detailed_analysis.market_overview}</p>
                       </div>
                     </div>
-                    
+
                     <div>
                       <h5 className="font-semibold text-gray-900 mb-3 flex items-center">
                         <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
@@ -554,7 +587,7 @@ const AmpliFiApp = () => {
                         <p className="text-gray-700 text-sm">{currentRecommendation.detailed_analysis.competitive_landscape}</p>
                       </div>
                     </div>
-                    
+
                     <div>
                       <h5 className="font-semibold text-gray-900 mb-3 flex items-center">
                         <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
@@ -564,7 +597,7 @@ const AmpliFiApp = () => {
                         <p className="text-gray-700 text-sm">{currentRecommendation.detailed_analysis.demand_drivers}</p>
                       </div>
                     </div>
-                    
+
                     <div>
                       <h5 className="font-semibold text-gray-900 mb-3 flex items-center">
                         <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
@@ -574,7 +607,7 @@ const AmpliFiApp = () => {
                         <p className="text-gray-700 text-sm">{currentRecommendation.detailed_analysis.pricing_strategy}</p>
                       </div>
                     </div>
-                    
+
                     <div>
                       <h5 className="font-semibold text-gray-900 mb-3 flex items-center">
                         <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
@@ -584,7 +617,7 @@ const AmpliFiApp = () => {
                         <p className="text-gray-700 text-sm">{currentRecommendation.detailed_analysis.risk_factors}</p>
                       </div>
                     </div>
-                    
+
                     <div>
                       <h5 className="font-semibold text-gray-900 mb-3 flex items-center">
                         <span className="w-2 h-2 bg-indigo-500 rounded-full mr-2"></span>
@@ -612,11 +645,11 @@ const AmpliFiApp = () => {
                         </div>
                         <div>
                           <h6 className="font-medium text-blue-900 mb-2">Analysis Factors</h6>
-<ul className="space-y-1 text-blue-800">
-  {Array.isArray(currentRecommendation.market_factors) && currentRecommendation.market_factors.map((factor, index) => (
-    <li key={index}>• {factor}</li>
-  ))}
-</ul>
+                          <ul className="space-y-1 text-blue-800">
+                            {Array.isArray(currentRecommendation.market_factors) && currentRecommendation.market_factors.map((factor, index) => (
+                              <li key={index}>• {factor}</li>
+                            ))}
+                          </ul>
                         </div>
                       </div>
                     </div>
@@ -663,16 +696,16 @@ const AmpliFiApp = () => {
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={priceHistory}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis 
-                dataKey="date" 
+              <XAxis
+                dataKey="date"
                 tick={{ fontSize: 12 }}
                 tickFormatter={(date) => new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
               />
               <YAxis yAxisId="price" orientation="left" />
               <YAxis yAxisId="occupancy" orientation="right" />
-              <Tooltip 
+              <Tooltip
                 formatter={(value, name) => [
-                  name === 'price' ? `$${value}` : `${value}%`, 
+                  name === 'price' ? `$${value}` : `${value}%`,
                   name === 'price' ? 'Price' : 'Occupancy'
                 ]}
               />
@@ -697,8 +730,8 @@ const AmpliFiApp = () => {
               shortName: comp.name.length > 20 ? comp.name.substring(0, 17) + '...' : comp.name
             }))}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis 
-                dataKey="shortName" 
+              <XAxis
+                dataKey="shortName"
                 tick={{ fontSize: 9 }}
                 angle={-45}
                 textAnchor="end"
@@ -706,7 +739,7 @@ const AmpliFiApp = () => {
                 interval={0}
               />
               <YAxis />
-              <Tooltip 
+              <Tooltip
                 formatter={(value, name, props) => [`$${value}`, props.payload.name]}
                 labelFormatter={(label, payload) => {
                   if (payload && payload[0]) {
@@ -716,8 +749,8 @@ const AmpliFiApp = () => {
                   return label;
                 }}
               />
-              <Bar 
-                dataKey="price" 
+              <Bar
+                dataKey="price"
                 fill="#6366f1"
                 radius={[4, 4, 0, 0]}
               />
@@ -757,9 +790,9 @@ const AmpliFiApp = () => {
                   <p className="text-sm font-medium">{new Date(event.date).toLocaleDateString()}</p>
                   <span className={`inline-block px-2 py-1 rounded text-xs ${
                     event.impact === 'high' ? 'bg-red-100 text-red-700' :
-                    event.impact === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-green-100 text-green-700'
-                  }`}>
+                      event.impact === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-green-100 text-green-700'
+                    }`}>
                     {event.impact} impact
                   </span>
                 </div>
@@ -776,7 +809,7 @@ const AmpliFiApp = () => {
       <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold">Competitor Analysis</h3>
-          <button 
+          <button
             onClick={getRecommendation}
             disabled={isLoading}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
@@ -785,7 +818,7 @@ const AmpliFiApp = () => {
             Refresh Data
           </button>
         </div>
-        
+
         {/* Market Position Summary */}
         {currentRecommendation && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -797,21 +830,21 @@ const AmpliFiApp = () => {
             <div className="bg-green-50 p-4 rounded-lg">
               <div className="text-sm text-green-600 font-medium">Market Average</div>
               <div className="text-2xl font-bold text-green-900">
-                ${competitorData.length > 0 ? 
-                  (competitorData.reduce((sum, c) => sum + c.price, 0) / competitorData.length).toFixed(2) : 
+                ${competitorData.length > 0 ?
+                  (competitorData.reduce((sum, c) => sum + c.price, 0) / competitorData.length).toFixed(2) :
                   '--'}
               </div>
               <div className="text-sm text-green-600">
-                {competitorData.length > 0 && currentRecommendation ? 
-                  `${currentRecommendation.recommended_price > (competitorData.reduce((sum, c) => sum + c.price, 0) / competitorData.length) ? 'Above' : 'Below'} average` : 
+                {competitorData.length > 0 && currentRecommendation ?
+                  `${currentRecommendation.recommended_price > (competitorData.reduce((sum, c) => sum + c.price, 0) / competitorData.length) ? 'Above' : 'Below'} average` :
                   'No data'}
               </div>
             </div>
             <div className="bg-purple-50 p-4 rounded-lg">
               <div className="text-sm text-purple-600 font-medium">Price Range</div>
               <div className="text-2xl font-bold text-purple-900">
-                {competitorData.length > 0 ? 
-                  `$${Math.min(...competitorData.map(c => c.price))} - $${Math.max(...competitorData.map(c => c.price))}` : 
+                {competitorData.length > 0 ?
+                  `$${Math.min(...competitorData.map(c => c.price))} - $${Math.max(...competitorData.map(c => c.price))}` :
                   '--'}
               </div>
               <div className="text-sm text-purple-600">
@@ -820,7 +853,7 @@ const AmpliFiApp = () => {
             </div>
           </div>
         )}
-        
+
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -838,44 +871,146 @@ const AmpliFiApp = () => {
               {competitorData
                 .sort((a, b) => b.price - a.price)
                 .map((competitor, index) => {
-                const diff = currentRecommendation ? 
-                  competitor.price - currentRecommendation.recommended_price : 0;
-                const ourRank = currentRecommendation ? 
-                  competitorData.filter(c => c.price > currentRecommendation.recommended_price).length + 1 : 0;
-                return (
-                  <tr key={index} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-4 font-medium">{competitor.name}</td>
-                    <td className="py-3 px-4">${competitor.price}</td>
-                    <td className="py-3 px-4 text-gray-600">{competitor.location || 'Downtown'}</td>
-                    <td className="py-3 px-4 text-gray-600">{competitor.brand || 'Independent'}</td>
-                    <td className="py-3 px-4">
-                      <div className="flex">
-                        {[...Array(competitor.stars || 3)].map((_, i) => (
-                          <span key={i} className="text-yellow-400">★</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`inline-flex items-center px-2 py-1 rounded text-sm ${
-                        diff > 0 ? 'bg-red-100 text-red-700' : 
-                        diff < 0 ? 'bg-green-100 text-green-700' : 
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {diff > 0 ? '+' : ''}${diff.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="text-sm font-medium">#{index + 1}</span>
-                      {index + 1 === ourRank && (
-                        <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Our Position</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                  const diff = currentRecommendation ?
+                    competitor.price - currentRecommendation.recommended_price : 0;
+                  const ourRank = currentRecommendation ?
+                    competitorData.filter(c => c.price > currentRecommendation.recommended_price).length + 1 : 0;
+                  return (
+                    <tr key={index} className="border-b hover:bg-gray-50">
+                      <td className="py-3 px-4 font-medium">{competitor.name}</td>
+                      <td className="py-3 px-4">${competitor.price}</td>
+                      <td className="py-3 px-4 text-gray-600">{competitor.location || 'Downtown'}</td>
+                      <td className="py-3 px-4 text-gray-600">{competitor.brand || 'Independent'}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex">
+                          {[...Array(competitor.stars || 3)].map((_, i) => (
+                            <span key={i} className="text-yellow-400">★</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-sm ${
+                          diff > 0 ? 'bg-red-100 text-red-700' :
+                            diff < 0 ? 'bg-green-100 text-green-700' :
+                              'bg-gray-100 text-gray-700'
+                          }`}>
+                          {diff > 0 ? '+' : ''}${diff.toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="text-sm font-medium">#{index + 1}</span>
+                        {index + 1 === ourRank && (
+                          <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Our Position</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  );
+
+  const renderAncillaryRevenue = () => (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+        <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">AI-Suggested Upsell Opportunities</h3>
+            <button onClick={fetchAncillaryData} disabled={ancillaryOpportunities.loading} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                <RefreshCw className={`h-4 w-4 mr-2 ${ancillaryOpportunities.loading ? 'animate-spin' : ''}`} />
+                Refresh
+            </button>
+        </div>
+        
+        {ancillaryOpportunities.loading ? (
+            <p>Loading AI suggestions...</p>
+        ) : ancillaryOpportunities.data.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {ancillaryOpportunities.data.map((item, index) => (
+                <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <h4 className="font-semibold text-blue-800">{item.name}</h4>
+                <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                <div className="mt-2 text-lg font-bold text-green-600">${item.suggested_price.toFixed(2)}</div>
+                </div>
+            ))}
+            </div>
+        ) : (
+            <p>No upsell opportunities found. Try again later.</p>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderDirectBooking = () => (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+        <h3 className="text-lg font-semibold mb-4">Direct Booking Intelligence</h3>
+        <p className="text-gray-600 mb-6">
+            Reduce reliance on expensive Online Travel Agencies (OTAs). This module estimates your monthly commission costs and highlights potential savings by shifting guests to direct booking channels.
+        </p>
+        {directBookingSavings ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-red-50 p-6 rounded-lg">
+              <div className="flex items-center text-sm text-red-600 font-medium">
+                <DollarSign className="h-4 w-4 mr-2" />
+                Estimated Monthly OTA Commissions
+              </div>
+              <div className="text-3xl font-bold text-red-900 mt-2">${directBookingSavings.monthly_ota_commission.toLocaleString()}</div>
+              <p className="text-xs text-red-700 mt-1">This is an estimate of what you pay to OTAs each month (e.g., Booking.com, Expedia) based on a 40% booking share and an 18% commission rate.</p>
+            </div>
+            <div className="bg-green-50 p-6 rounded-lg">
+              <div className="flex items-center text-sm text-green-600 font-medium">
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Potential Monthly Savings
+              </div>
+              <div className="text-3xl font-bold text-green-900 mt-2">${directBookingSavings.potential_monthly_savings.toLocaleString()}</div>
+              <p className="text-xs text-green-700 mt-1">Represents the savings if you could shift 25% of your OTA bookings to direct channels, saving on commission fees.</p>
+            </div>
+          </div>
+        ) : (
+            <p>Loading direct booking intelligence...</p>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderDemandForecast = () => (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+        <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">90-Day Demand Forecast</h3>
+            <button onClick={fetchDemandForecast} disabled={demandForecast.loading} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                <RefreshCw className={`h-4 w-4 mr-2 ${demandForecast.loading ? 'animate-spin' : ''}`} />
+                Refresh Forecast
+            </button>
+        </div>
+        {demandForecast.loading ? (
+            <p>Generating 90-day forecast...</p>
+        ) : demandForecast.data.length > 0 ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+          {demandForecast.data.map((day, index) => (
+            <div key={index} className={`p-3 rounded-lg border ${
+              day.demand_level === 'peak' ? 'bg-red-100 border-red-200' :
+              day.demand_level === 'high' ? 'bg-orange-100 border-orange-200' :
+              day.demand_level === 'medium' ? 'bg-yellow-100 border-yellow-200' : 
+              'bg-green-100 border-green-200'
+            }`}>
+              <div className="font-bold text-sm text-gray-800">{new Date(day.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
+              <div className="text-xs text-gray-600 mt-1">{day.driver}</div>
+              <div className={`mt-2 text-xs font-bold uppercase px-2 py-1 rounded-full inline-block ${
+                day.demand_level === 'peak' ? 'bg-red-200 text-red-800' :
+                day.demand_level === 'high' ? 'bg-orange-200 text-orange-800' :
+                day.demand_level === 'medium' ? 'bg-yellow-200 text-yellow-800' : 
+                'bg-green-200 text-green-800'
+              }`}>{day.demand_level}</div>
+            </div>
+          ))}
+        </div>
+        ) : (
+            <p>Could not generate a demand forecast at this time. Please try again later.</p>
+        )}
       </div>
     </div>
   );
@@ -894,16 +1029,16 @@ const AmpliFiApp = () => {
             Add Hotel
           </button>
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {hotels.map((hotel, index) => (
-            <div 
-              key={index} 
+            <div
+              key={index}
               className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                currentHotel === index 
-                  ? 'border-blue-500 bg-blue-50' 
+                currentHotel === index
+                  ? 'border-blue-500 bg-blue-50'
                   : 'border-gray-200 hover:border-gray-300'
-              }`}
+                }`}
               onClick={() => setCurrentHotel(index)}
             >
               <div className="flex items-center justify-between mb-2">
@@ -914,10 +1049,10 @@ const AmpliFiApp = () => {
               <p className="text-sm text-gray-500">{hotel.totalRooms} rooms</p>
               <div className="mt-2 flex items-center space-x-2">
                 <span className={`px-2 py-1 rounded text-xs ${
-                  hotel.autoMode 
-                    ? 'bg-green-100 text-green-700' 
+                  hotel.autoMode
+                    ? 'bg-green-100 text-green-700'
                     : 'bg-gray-100 text-gray-700'
-                }`}>
+                  }`}>
                   {hotel.autoMode ? 'Auto-Pilot' : 'Manual'}
                 </span>
                 {currentHotel === index && (
@@ -946,13 +1081,13 @@ const AmpliFiApp = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Star Rating</label>
             <div className="flex items-center space-x-2">
               {renderStarRating(
-                getCurrentHotel().starRating, 
-                true, 
+                getCurrentHotel().starRating,
+                true,
                 (rating) => updateHotelConfig('starRating', rating)
               )}
               <span className="text-sm text-gray-600">
@@ -960,7 +1095,7 @@ const AmpliFiApp = () => {
               </span>
             </div>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Total Rooms</label>
             <input
@@ -970,7 +1105,7 @@ const AmpliFiApp = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Base Occupancy (%)</label>
             <input
@@ -980,7 +1115,7 @@ const AmpliFiApp = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Price ($)</label>
             <input
@@ -990,7 +1125,7 @@ const AmpliFiApp = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Maximum Price ($)</label>
             <input
@@ -1016,12 +1151,12 @@ const AmpliFiApp = () => {
               onClick={() => updateHotelConfig('autoMode', !getCurrentHotel().autoMode)}
               className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${
                 getCurrentHotel().autoMode ? 'bg-blue-600' : 'bg-gray-200'
-              }`}
+                }`}
             >
               <span
                 className={`inline-block w-4 h-4 transform transition-transform bg-white rounded-full ${
                   getCurrentHotel().autoMode ? 'translate-x-6' : 'translate-x-1'
-                }`}
+                  }`}
               />
             </button>
           </div>
@@ -1035,9 +1170,9 @@ const AmpliFiApp = () => {
           <div className="flex items-center justify-between">
             <span className="text-gray-600">Backend Connection</span>
             <div className={`flex items-center space-x-2 ${
-              connectionStatus === 'connected' ? 'text-green-600' : 
-              connectionStatus === 'connecting' ? 'text-yellow-600' : 'text-red-600'
-            }`}>
+              connectionStatus === 'connected' ? 'text-green-600' :
+                connectionStatus === 'connecting' ? 'text-yellow-600' : 'text-red-600'
+              }`}>
               {connectionStatus === 'connected' ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
               <span className="capitalize">{connectionStatus}</span>
             </div>
@@ -1074,7 +1209,7 @@ const AmpliFiApp = () => {
               <X className="h-5 w-5 text-gray-400 hover:text-gray-600" />
             </button>
           </div>
-          
+
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Hotel Name</label>
@@ -1086,7 +1221,7 @@ const AmpliFiApp = () => {
                 placeholder="Enter hotel name"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
               <input
@@ -1097,13 +1232,13 @@ const AmpliFiApp = () => {
                 placeholder="City, Country"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Star Rating</label>
               <div className="flex items-center space-x-2">
                 {renderStarRating(
-                  newHotel.starRating, 
-                  true, 
+                  newHotel.starRating,
+                  true,
                   (rating) => setNewHotel(prev => ({ ...prev, starRating: rating }))
                 )}
                 <span className="text-sm text-gray-600">
@@ -1111,7 +1246,7 @@ const AmpliFiApp = () => {
                 </span>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Total Rooms</label>
@@ -1122,7 +1257,7 @@ const AmpliFiApp = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Base Occupancy (%)</label>
                 <input
@@ -1133,7 +1268,7 @@ const AmpliFiApp = () => {
                 />
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Min Price ($)</label>
@@ -1144,7 +1279,7 @@ const AmpliFiApp = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Max Price ($)</label>
                 <input
@@ -1156,7 +1291,7 @@ const AmpliFiApp = () => {
               </div>
             </div>
           </div>
-          
+
           <div className="flex space-x-3 mt-6">
             <button
               onClick={() => setShowAddHotel(false)}
@@ -1191,12 +1326,12 @@ const AmpliFiApp = () => {
               <X className="h-5 w-5 text-gray-400 hover:text-gray-600" />
             </button>
           </div>
-          
+
           <div className="space-y-4">
             <p className="text-gray-600">
               Choose where you want your hotel to rank among {competitorData.length} competitors:
             </p>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Desired Market Ranking
@@ -1210,15 +1345,15 @@ const AmpliFiApp = () => {
                   <option key={rank} value={rank}>
                     #{rank} - {
                       rank === 1 ? 'Highest Price (Premium)' :
-                      rank <= Math.ceil(maxRank * 0.3) ? 'High Price (Luxury)' :
-                      rank <= Math.ceil(maxRank * 0.7) ? 'Mid-Market (Competitive)' :
-                      'Lower Price (Value)'
+                        rank <= Math.ceil(maxRank * 0.3) ? 'High Price (Luxury)' :
+                          rank <= Math.ceil(maxRank * 0.7) ? 'Mid-Market (Competitive)' :
+                            'Lower Price (Value)'
                     }
                   </option>
                 ))}
               </select>
             </div>
-            
+
             {competitorData.length > 0 && (
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h4 className="font-medium mb-2">Current Market Landscape:</h4>
@@ -1239,7 +1374,7 @@ const AmpliFiApp = () => {
               </div>
             )}
           </div>
-          
+
           <div className="flex space-x-3 mt-6">
             <button
               onClick={() => setShowPriceOverride(false)}
@@ -1272,9 +1407,9 @@ const AmpliFiApp = () => {
               </div>
               <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs ${
                 connectionStatus === 'connected' ? 'bg-green-100 text-green-700' :
-                connectionStatus === 'connecting' ? 'bg-yellow-100 text-yellow-700' :
-                'bg-red-100 text-red-700'
-              }`}>
+                  connectionStatus === 'connecting' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-red-100 text-red-700'
+                }`}>
                 {connectionStatus === 'connected' ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
                 {connectionStatus}
               </div>
@@ -1293,14 +1428,14 @@ const AmpliFiApp = () => {
                 </select>
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               {/* Location Selector */}
               <div className="relative">
                 <select
                   value={`${selectedLocation.city}, ${selectedLocation.region}`}
                   onChange={(e) => {
-                    const location = locations.find(loc => 
+                    const location = locations.find(loc =>
                       `${loc.city}, ${loc.region}` === e.target.value
                     );
                     if (location) setSelectedLocation(location);
@@ -1346,16 +1481,19 @@ const AmpliFiApp = () => {
             {[
               { id: 'dashboard', name: 'Dashboard', icon: BarChart3 },
               { id: 'competitors', name: 'Competitor Analysis', icon: Activity },
+              { id: 'demandForecast', name: 'Demand Forecast', icon: TrendingUp },
+              { id: 'ancillary', name: 'Ancillary Revenue', icon: Package },
+              { id: 'directBooking', name: 'Direct Bookings', icon: Briefcase },
               { id: 'settings', name: 'Settings', icon: Settings }
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeTab === tab.id 
-                    ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                  activeTab === tab.id
+                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 <tab.icon className="h-4 w-4" />
                 <span>{tab.name}</span>
@@ -1368,6 +1506,9 @@ const AmpliFiApp = () => {
         <div>
           {activeTab === 'dashboard' && renderDashboard()}
           {activeTab === 'competitors' && renderCompetitors()}
+          {activeTab === 'ancillary' && renderAncillaryRevenue()}
+          {activeTab === 'directBooking' && renderDirectBooking()}
+          {activeTab === 'demandForecast' && renderDemandForecast()}
           {activeTab === 'settings' && renderSettings()}
         </div>
 

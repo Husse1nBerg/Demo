@@ -152,6 +152,97 @@ class EnhancedHotelAnalytics:
             "demand_drivers": [],
             "seasonal_factors": {"seasonal_multiplier": 1.0}
         }
+
+    def get_demand_forecast(self, city: str, country: str, hotel_config: Dict) -> List[Dict]:
+        """Generate a 90-day demand forecast."""
+        logger.info(f"Generating 90-day demand forecast for {city}, {country}")
+        
+        prompt = f"""
+        You are a hotel revenue management expert. Create a 90-day demand forecast for a {hotel_config.get('starRating', 3)}-star hotel in {city}, {country}.
+        
+        For each day starting from today, provide a demand level (low, medium, high, peak) and a key driver.
+        
+        Return ONLY a valid JSON array in this format:
+        [
+            {{
+                "date": "YYYY-MM-DD",
+                "demand_level": "low|medium|high|peak",
+                "driver": "Weekend travel|Business travel|Conference|Holiday|etc."
+            }}
+        ]
+        """
+        
+        response = self._make_ai_request(prompt, max_tokens=4000)
+        if response:
+            try:
+                forecast = json.loads(response)
+                if isinstance(forecast, list) and forecast:
+                    return forecast
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse forecast JSON: {e}")
+        
+        # Fallback to demo data
+        return [
+            {"date": (datetime.now() + timedelta(days=i)).strftime('%Y-%m-%d'), "demand_level": "medium", "driver": "Standard demand"} for i in range(7)
+        ]
+
+    def get_upsell_opportunities(self, hotel_config: Dict) -> List[Dict]:
+        """Generate upsell and ancillary revenue opportunities."""
+        logger.info("Generating upsell opportunities")
+        
+        prompt = f"""
+        You are a hotel revenue management expert. For a {hotel_config.get('starRating', 3)}-star hotel, suggest 5-7 ancillary revenue and upsell opportunities.
+        
+        Return ONLY a valid JSON array in this format:
+        [
+            {{
+                "name": "Early Check-in",
+                "description": "Allow guests to check-in from 10 AM.",
+                "suggested_price": 25.00,
+                "type": "service"
+            }}
+        ]
+        """
+        
+        response = self._make_ai_request(prompt)
+        if response:
+            try:
+                opportunities = json.loads(response)
+                if isinstance(opportunities, list) and opportunities:
+                    return opportunities
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse upsell JSON: {e}")
+        
+        # Fallback to demo data
+        return [
+            {"name": "Early Check-in", "description": "Allow guests to check-in from 10 AM.", "suggested_price": 25.00, "type": "service"},
+            {"name": "Late Check-out", "description": "Extend check-out time until 2 PM.", "suggested_price": 30.00, "type": "service"},
+            {"name": "Room Upgrade", "description": "Upgrade to a room with a view.", "suggested_price": 50.00, "type": "upgrade"},
+        ]
+
+    def calculate_direct_booking_savings(self, hotel_config: Dict) -> Dict:
+        """Calculate potential savings from direct bookings."""
+        # This is a simplified model. A real implementation would use historical booking data.
+        total_rooms = hotel_config.get('totalRooms', 100)
+        avg_rate = (hotel_config.get('minPrice', 80) + hotel_config.get('maxPrice', 500)) / 2
+        occupancy = hotel_config.get('baseOccupancy', 65) / 100
+        
+        ota_commission_rate = 0.18 # Average OTA commission
+        ota_booking_percentage = 0.40 # Assume 40% of bookings come from OTAs
+        
+        monthly_rooms_sold = total_rooms * occupancy * 30
+        ota_rooms_sold = monthly_rooms_sold * ota_booking_percentage
+        
+        total_revenue = monthly_rooms_sold * avg_rate
+        ota_revenue = ota_rooms_sold * avg_rate
+        commission_paid = ota_revenue * ota_commission_rate
+        
+        potential_savings = commission_paid * 0.25 # Assume 25% can be shifted to direct
+        
+        return {
+            "monthly_ota_commission": round(commission_paid, 2),
+            "potential_monthly_savings": round(potential_savings, 2)
+        }
     
     def calculate_optimal_pricing(self, 
                                 location: str,
@@ -226,9 +317,7 @@ class EnhancedHotelAnalytics:
             lead_time_multiplier = 0.95
         
         # Calculate final price
-        calculated_price = (base_price * 
-                          demand_multiplier * 
-                          dow_multipliers.get(day_of_week, 1.0) *
+        calculated_price = (base_price * demand_multiplier * dow_multipliers.get(day_of_week, 1.0) *
                           seasonal_multiplier *
                           lead_time_multiplier)
         
