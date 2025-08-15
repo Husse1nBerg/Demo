@@ -482,8 +482,8 @@ const AmpliFiApp = () => {
                     {marketEvents.slice(0, 3).map((event, index) => (
                       <div key={index} className="flex items-center justify-between text-sm">
                         <span className="text-yellow-800">
-                          {event.source === 'tavily' ? '🔴 LIVE: ' : '🤖 AI: '}{event.name}
-                        </span>
+  {event.source === 'tavily' ? '🔴 LIVE: ' : '🤖 AI: '}{event.name || event.event_name}
+</span>
                         <span className={`px-2 py-1 rounded text-xs ${
                           event.impact === 'high' ? 'bg-red-100 text-red-700' :
                           event.impact === 'medium' ? 'bg-yellow-100 text-yellow-700' :
@@ -583,11 +583,11 @@ const AmpliFiApp = () => {
                         </div>
                         <div>
                           <h6 className="font-medium text-blue-900 mb-2">Analysis Factors</h6>
-                          <ul className="space-y-1 text-blue-800">
-                            {(currentRecommendation.market_factors || []).map((factor, index) => (
-                              <li key={index}>• {factor}</li>
-                            ))}
-                          </ul>
+<ul className="space-y-1 text-blue-800">
+  {Array.isArray(currentRecommendation.market_factors) && currentRecommendation.market_factors.map((factor, index) => (
+    <li key={index}>• {factor}</li>
+  ))}
+</ul>
                         </div>
                       </div>
                     </div>
@@ -718,7 +718,7 @@ const AmpliFiApp = () => {
             {marketEvents.map((event, index) => (
               <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                 <div>
-                  <p className="font-medium">{event.name}</p>
+                  <p className="font-medium">{event.name || event.event_name}</p>
                   <p className="text-sm text-gray-600">{event.description}</p>
                   {event.source === 'tavily' && (
                     <span className="inline-block mt-1 bg-green-100 text-green-700 px-2 py-1 rounded text-xs">Live Data</span>
