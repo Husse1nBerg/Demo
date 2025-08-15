@@ -7,7 +7,7 @@ import {
   Zap, Target, BarChart3, Activity, Hotel,
   RefreshCw, Play, Pause, ChevronDown, ChevronUp,
   Wifi, WifiOff, Plus, X,
-  Star, Crown, Package, Briefcase, Info
+  Star, Crown, Package, Briefcase, Info, Percent
 } from 'lucide-react';
 
 
@@ -36,6 +36,7 @@ const AmpliFiApp = () => {
   const [showAddHotel, setShowAddHotel] = useState(false);
   const [showPriceOverride, setShowPriceOverride] = useState(false);
   const [expandedAnalysis, setExpandedAnalysis] = useState(false);
+  const [discountPercentage, setDiscountPercentage] = useState(0);
 
   // Data State
   const [currentRecommendation, setCurrentRecommendation] = useState(null);
@@ -106,30 +107,45 @@ const AmpliFiApp = () => {
   useEffect(() => {
     const generateDemoHistory = () => {
         const history = [];
-        const basePrice = 120 + Math.random() * 80;
+        let basePrice = 150 + Math.random() * 50;
+        let baseOccupancy = 65 + Math.random() * 10;
 
         for (let i = 14; i >= 0; i--) {
-          const date = new Date();
-          date.setDate(date.getDate() - i);
-    
-          const seasonalMultiplier = 0.8 + (Math.sin((date.getMonth() / 12) * 2 * Math.PI) * 0.3);
-          const weekendMultiplier = [0, 6].includes(date.getDay()) ? 1.2 : 1.0;
-          const randomVariation = 0.9 + Math.random() * 0.2;
-    
-          const price = Math.round(basePrice * seasonalMultiplier * weekendMultiplier * randomVariation);
-          const occupancy = Math.min(95, Math.max(20, 60 + Math.random() * 30));
-    
-          history.push({
-            date: date.toISOString().split('T')[0],
-            price,
-            occupancy: Math.round(occupancy),
-            revpar: Math.round(price * (occupancy / 100)),
-            adr: price
-          });
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            
+            let price = basePrice;
+            let occupancy = baseOccupancy;
+
+            // Weekend effect
+            if ([5, 6].includes(date.getDay())) {
+                price *= 1.25;
+                occupancy *= 1.15;
+            }
+
+            // Random event simulation
+            if (Math.random() < 0.2) {
+                price *= 1.4;
+                occupancy *= 1.2;
+            }
+
+            // General noise
+            price *= (0.95 + Math.random() * 0.1);
+            occupancy *= (0.95 + Math.random() * 0.1);
+            
+            occupancy = Math.min(98, Math.max(55, occupancy));
+            price = Math.round(price);
+            
+            history.push({
+                date: date.toISOString().split('T')[0],
+                price,
+                occupancy: Math.round(occupancy),
+                revpar: Math.round(price * (occupancy / 100)),
+                adr: price
+            });
         }
-    
         setPriceHistory(history);
-      };
+    };
 
     generateDemoHistory();
     loadHotels();
@@ -381,14 +397,6 @@ const AmpliFiApp = () => {
 
         <div className="flex items-center space-x-3">
           <button
-            onClick={() => setShowPriceOverride(true)}
-            disabled={!currentRecommendation || competitorData.length === 0}
-            className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
-          >
-            <Crown className="h-4 w-4 mr-2" />
-            Set Market Position
-          </button>
-          <button
             onClick={getRecommendation}
             disabled={isLoading}
             className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
@@ -496,7 +504,7 @@ const AmpliFiApp = () => {
                     <div className="text-2xl font-bold text-green-600">{marketEvents.length}</div>
                     <div className="text-gray-600">Market Events</div>
                     <div className="text-xs text-gray-500">
-                      {marketEvents.filter(e => e.source === 'tavily').length} live, {marketEvents.filter(e => e.source !== 'tavily').length} AI research
+                    {marketEvents.filter(e => e.source === 'Tavily').length} from Live Search, {marketEvents.filter(e => e.source !== 'Tavily').length} from AI
                     </div>
                   </div>
                   <div className="text-center">
@@ -535,33 +543,7 @@ const AmpliFiApp = () => {
                   </span>
                 )}
               </div>
-
-              {/* Market Events Summary */}
-              {marketEvents.length > 0 && (
-                <div className="bg-yellow-50 p-4 rounded-lg mb-4">
-                  <h4 className="font-semibold text-yellow-900 mb-2">📅 Market Events Detected</h4>
-                  <div className="space-y-2">
-                    {marketEvents.slice(0, 3).map((event, index) => (
-                      <div key={index} className="flex items-center justify-between text-sm">
-                        <span className="text-yellow-800">
-                          {event.source === 'tavily' ? '🔴 LIVE: ' : '🤖 AI: '}{event.name || event.event_name}
-                        </span>
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          event.impact === 'high' ? 'bg-red-100 text-red-700' :
-                            event.impact === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-green-100 text-green-700'
-                          }`}>
-                          {event.impact} impact
-                        </span>
-                      </div>
-                    ))}
-                    {marketEvents.length > 3 && (
-                      <div className="text-xs text-yellow-600">+{marketEvents.length - 3} more events analyzed</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
+              
               {/* Expanded Analysis */}
               {expandedAnalysis && currentRecommendation.detailed_analysis && (
                 <div className="bg-white p-6 rounded-lg border border-blue-200 space-y-6">
@@ -764,27 +746,31 @@ const AmpliFiApp = () => {
         </div>
       </div>
 
-      {/* Market Events */}
-      {marketEvents.length > 0 && (
+       {/* Market Events */}
+       {marketEvents.length > 0 && (
         <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">Market Events Impact</h3>
-            <div className="flex items-center space-x-2 text-sm text-gray-600">
-              <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">AI Research</span>
-              {marketEvents.some(e => e.source === 'tavily') && (
-                <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">Real-time Data</span>
-              )}
+            <div className="flex items-center">
+              <h3 className="text-lg font-semibold">Market Events Impact</h3>
+              <div className="relative group ml-2">
+                <Info className="h-4 w-4 text-gray-400 cursor-pointer" />
+                <div className="absolute bottom-full mb-2 w-64 bg-gray-800 text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <span className="font-bold">🔴 Live:</span> Sourced from real-time web search.
+                  <br />
+                  <span className="font-bold">🤖 AI:</span> Sourced from general knowledge (e.g., public holidays).
+                </div>
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {marketEvents.map((event, index) => (
               <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                 <div>
-                  <p className="font-medium">{event.name || event.event_name}</p>
+                  <p className="font-medium flex items-center">
+                    {event.source === 'Tavily' && <span className="text-red-500 mr-2">●</span>}
+                    {event.name || event.event_name}
+                  </p>
                   <p className="text-sm text-gray-600">{event.description}</p>
-                  {event.source === 'tavily' && (
-                    <span className="inline-block mt-1 bg-green-100 text-green-700 px-2 py-1 rounded text-xs">Live Data</span>
-                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-medium">{new Date(event.date).toLocaleDateString()}</p>
@@ -804,114 +790,101 @@ const AmpliFiApp = () => {
     </div>
   );
 
-  const renderCompetitors = () => (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold">Competitor Analysis</h3>
-          <button
-            onClick={getRecommendation}
-            disabled={isLoading}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh Data
-          </button>
-        </div>
-
-        {/* Market Position Summary */}
-        {currentRecommendation && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <div className="text-sm text-blue-600 font-medium">Our Position</div>
-              <div className="text-2xl font-bold text-blue-900">${currentRecommendation.recommended_price}</div>
-              <div className="text-sm text-blue-600">{currentRecommendation.market_position || 'Competitive'}</div>
-            </div>
-            <div className="bg-green-50 p-4 rounded-lg">
-              <div className="text-sm text-green-600 font-medium">Market Average</div>
-              <div className="text-2xl font-bold text-green-900">
-                ${competitorData.length > 0 ?
-                  (competitorData.reduce((sum, c) => sum + c.price, 0) / competitorData.length).toFixed(2) :
-                  '--'}
-              </div>
-              <div className="text-sm text-green-600">
-                {competitorData.length > 0 && currentRecommendation ?
-                  `${currentRecommendation.recommended_price > (competitorData.reduce((sum, c) => sum + c.price, 0) / competitorData.length) ? 'Above' : 'Below'} average` :
-                  'No data'}
-              </div>
-            </div>
-            <div className="bg-purple-50 p-4 rounded-lg">
-              <div className="text-sm text-purple-600 font-medium">Price Range</div>
-              <div className="text-2xl font-bold text-purple-900">
-                {competitorData.length > 0 ?
-                  `$${Math.min(...competitorData.map(c => c.price))} - $${Math.max(...competitorData.map(c => c.price))}` :
-                  '--'}
-              </div>
-              <div className="text-sm text-purple-600">
-                {competitorData.length} properties
-              </div>
+  const renderCompetitors = () => {
+    const ourHotel = getCurrentHotel();
+    const ourPrice = currentRecommendation ? currentRecommendation.recommended_price * (1 - discountPercentage / 100) : 0;
+  
+    const allHotels = [
+      ...competitorData,
+      {
+        ...ourHotel,
+        price: ourPrice,
+        name: ourHotel.hotelName,
+        isOurHotel: true
+      }
+    ].sort((a, b) => b.price - a.price);
+  
+    return (
+      <div className="space-y-6">
+        <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold">Competitor Analysis</h3>
+            <div className="flex items-center space-x-3">
+              <button 
+                onClick={() => setShowPriceOverride(true)}
+                disabled={!currentRecommendation || competitorData.length === 0}
+                className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+              >
+                <Crown className="h-4 w-4 mr-2" />
+                Set Market Position
+              </button>
+              <button 
+                onClick={getRecommendation}
+                disabled={isLoading}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                Refresh Data
+              </button>
             </div>
           </div>
-        )}
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-3 px-4">Hotel Name</th>
-                <th className="text-left py-3 px-4">Price</th>
-                <th className="text-left py-3 px-4">Location</th>
-                <th className="text-left py-3 px-4">Brand</th>
-                <th className="text-left py-3 px-4">Stars</th>
-                <th className="text-left py-3 px-4">vs. Our Price</th>
-                <th className="text-left py-3 px-4">Rank</th>
-              </tr>
-            </thead>
-            <tbody>
-              {competitorData
-                .sort((a, b) => b.price - a.price)
-                .map((competitor, index) => {
-                  const diff = currentRecommendation ?
-                    competitor.price - currentRecommendation.recommended_price : 0;
-                  const ourRank = currentRecommendation ?
-                    competitorData.filter(c => c.price > currentRecommendation.recommended_price).length + 1 : 0;
-                  return (
-                    <tr key={index} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-4 font-medium">{competitor.name}</td>
-                      <td className="py-3 px-4">${competitor.price}</td>
-                      <td className="py-3 px-4 text-gray-600">{competitor.location || 'Downtown'}</td>
-                      <td className="py-3 px-4 text-gray-600">{competitor.brand || 'Independent'}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex">
-                          {[...Array(competitor.stars || 3)].map((_, i) => (
-                            <span key={i} className="text-yellow-400">★</span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex items-center px-2 py-1 rounded text-sm ${
-                          diff > 0 ? 'bg-red-100 text-red-700' :
-                            diff < 0 ? 'bg-green-100 text-green-700' :
-                              'bg-gray-100 text-gray-700'
-                          }`}>
-                          {diff > 0 ? '+' : ''}${diff.toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="text-sm font-medium">#{index + 1}</span>
-                        {index + 1 === ourRank && (
-                          <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Our Position</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
+          
+          {/* Dynamic Discount Tool */}
+          {currentRecommendation && (
+            <div className="bg-gray-50 p-4 rounded-lg mb-6 border">
+              <h4 className="font-semibold mb-2">Dynamic Discount Modeling</h4>
+              <div className="flex items-center space-x-4">
+                <Percent className="h-5 w-5 text-gray-600" />
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={discountPercentage}
+                  onChange={(e) => setDiscountPercentage(Number(e.target.value))}
+                  className="w-full"
+                />
+                <span className="font-bold text-lg w-24 text-right">{discountPercentage}% Off</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Apply a temporary discount to see how your market ranking changes in real-time.
+              </p>
+            </div>
+          )}
+          
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-3 px-4">Rank</th>
+                  <th className="text-left py-3 px-4">Hotel Name</th>
+                  <th className="text-left py-3 px-4">Price</th>
+                  <th className="text-left py-3 px-4">Brand</th>
+                  <th className="text-left py-3 px-4">Stars</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allHotels.map((hotel, index) => (
+                  <tr key={index} className={`border-b ${hotel.isOurHotel ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                    <td className="py-3 px-4 font-bold">#{index + 1}</td>
+                    <td className="py-3 px-4 font-medium">{hotel.name}</td>
+                    <td className={`py-3 px-4 font-bold ${hotel.isOurHotel ? 'text-blue-600' : ''}`}>${hotel.price.toFixed(2)}</td>
+                    <td className="py-3 px-4 text-gray-600">{hotel.brand || 'Independent'}</td>
+                    <td className="py-3 px-4">
+                      <div className="flex">
+                        {[...Array(hotel.starRating || 3)].map((_, i) => (
+                          <span key={i} className="text-yellow-400">★</span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderAncillaryRevenue = () => (
     <div className="space-y-6">
@@ -993,9 +966,9 @@ const AmpliFiApp = () => {
           {demandForecast.data.map((day, index) => (
             <div key={index} className={`p-3 rounded-lg border ${
               day.demand_level === 'peak' ? 'bg-red-100 border-red-200' :
-              day.demand_level === 'high' ? 'bg-orange-100 border-orange-200' :
-              day.demand_level === 'medium' ? 'bg-yellow-100 border-yellow-200' : 
-              'bg-green-100 border-green-200'
+                day.demand_level === 'high' ? 'bg-orange-100 border-orange-200' :
+                  day.demand_level === 'medium' ? 'bg-yellow-100 border-yellow-200' : 
+                  'bg-green-100 border-green-200'
             }`}>
               <div className="font-bold text-sm text-gray-800">{new Date(day.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
               <div className="text-xs text-gray-600 mt-1">{day.driver}</div>

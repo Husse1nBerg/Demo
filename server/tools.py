@@ -95,63 +95,53 @@ class EnhancedHotelAnalytics:
         
         return []
     
-    def get_market_intelligence(self, city: str, country: str) -> Dict:
+    def get_market_intelligence(self, city: str, country: str, date: str) -> Dict:
         """Get comprehensive market intelligence"""
         logger.info(f"Gathering market intelligence for {city}, {country}")
+        tavily_events = search_events_with_tavily(city, country, date)
         
         prompt = f"""
-        You are a hotel market intelligence analyst for {city}, {country}.
+        You are a hotel market intelligence data extractor. Your task is to analyze the provided real-time search results and extract relevant hotel demand-driving events for {city}, {country}.
+
+        **CRITICAL INSTRUCTIONS:**
+        1.  **Prioritize Search Results:** You MUST prioritize the data from the `<search_results>` block. This is real-time data and is more reliable than your internal knowledge.
+        2.  **Extract, Don't Invent:** Extract event names, dates, and descriptions directly from the search results. If the search results are empty or irrelevant, return an empty `market_events` array. DO NOT invent events.
+        3.  **Add a Source:** For each event, add a "source" key. If it comes from the search results, set it to "Tavily". If you are adding a well-known, verifiable public holiday for the specified date, set it to "AI Generated".
+        4.  **Date Accuracy:** Ensure all dates are in "YYYY-MM-DD" format.
+
+        Here are the real-time search results:
+        <search_results>
+        {json.dumps(tavily_events)}
+        </search_results>
         
-        Analyze current market conditions and provide insights on:
-        1. Major events in next 30 days affecting hotel demand
-        2. Seasonal trends and patterns
-        3. Economic factors impacting travel
-        4. Supply/demand dynamics
-        5. Key demand generators (business, leisure, events)
-        
-        Return ONLY valid JSON in this format:
+        Return ONLY a valid JSON object in this format. If no events are found, the "market_events" array MUST be empty.
         {{
             "market_events": [
                 {{
-                    "name": "Event Name",
+                    "name": "Event Name from Search",
                     "date": "YYYY-MM-DD", 
                     "impact": "high/medium/low",
-                    "description": "Impact description",
-                    "type": "conference/festival/sports/business/holiday",
-                    "expected_visitors": 5000
+                    "description": "Description from search result",
+                    "source": "Tavily"
                 }}
-            ],
-            "market_conditions": {{
-                "demand_level": "high/medium/low",
-                "supply_growth": "increasing/stable/decreasing", 
-                "price_trend": "rising/stable/falling",
-                "occupancy_trend": "up/stable/down"
-            }},
-            "demand_drivers": ["business travel", "tourism", "events"],
-            "seasonal_factors": {{
-                "current_season": "peak/shoulder/low",
-                "seasonal_multiplier": 1.2
-            }}
+            ]
         }}
-        
-        Only return valid JSON, no other text.
         """
         
         response = self._make_ai_request(prompt, max_tokens=2000)
         if response:
             try:
                 intelligence = json.loads(response)
+                # Add tavily source to all events from search results
+                for event in intelligence.get("market_events", []):
+                    event["source"] = "Tavily" if "tavily" in json.dumps(tavily_events).lower() else "AI Generated"
+                
                 self._store_market_intelligence(f"{city}, {country}", intelligence)
                 return intelligence
             except json.JSONDecodeError:
                 pass
         
-        return {
-            "market_events": [],
-            "market_conditions": {"demand_level": "medium"},
-            "demand_drivers": [],
-            "seasonal_factors": {"seasonal_multiplier": 1.0}
-        }
+        return {"market_events": []}
 
     def get_demand_forecast(self, city: str, country: str, hotel_config: Dict) -> List[Dict]:
         """Generate a 90-day demand forecast."""
@@ -331,7 +321,7 @@ class EnhancedHotelAnalytics:
         projected_occupancy = min(95, base_occupancy + occupancy_boost)
         
         # Price elasticity consideration
-        if recommended_price > competitor_stats.get('avg', base_price) * 1.1:
+        if competitor_stats and recommended_price > competitor_stats.get('avg', base_price) * 1.1:
             projected_occupancy *= 0.9  # Reduce occupancy if pricing too high
         
         total_rooms = config['totalRooms']
@@ -353,6 +343,7 @@ class EnhancedHotelAnalytics:
             "confidence": confidence,
             "reasoning": reasoning,
             "competitors": competitors[:10],
+            "market_events": events,
             "market_factors": [e.get('name', '') for e in events[:5]],
             "kpis": {
                 "projected_occupancy": round(projected_occupancy, 1),
@@ -419,7 +410,7 @@ class EnhancedHotelAnalytics:
         elif lead_time > 90:      # Too far out, less certain
             confidence -= 5
         
-        return min(95, max(60, confidence))
+        return min(95, max(65, confidence)) # Set a minimum confidence of 65
     
     def _generate_pricing_reasoning(self, competitors: List[Dict], events: List[Dict], 
                                   day_of_week: int, seasonal_mult: float, demand_mult: float) -> str:
