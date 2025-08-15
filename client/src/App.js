@@ -103,53 +103,53 @@ const AmpliFiApp = () => {
     }
   };
 
+  const generateDemoHistory = useCallback(() => {
+    const history = [];
+    let basePrice = 150 + Math.random() * 50;
+    let baseOccupancy = 65 + Math.random() * 10;
+
+    for (let i = 14; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        
+        let price = basePrice;
+        let occupancy = baseOccupancy;
+
+        // Weekend effect
+        if ([5, 6].includes(date.getDay())) {
+            price *= 1.25;
+            occupancy *= 1.15;
+        }
+
+        // Random event simulation
+        if (Math.random() < 0.2) {
+            price *= 1.4;
+            occupancy *= 1.2;
+        }
+
+        // General noise
+        price *= (0.95 + Math.random() * 0.1);
+        occupancy *= (0.95 + Math.random() * 0.1);
+        
+        occupancy = Math.min(98, Math.max(55, occupancy));
+        price = Math.round(price);
+        
+        history.push({
+            date: date.toISOString().split('T')[0],
+            price,
+            occupancy: Math.round(occupancy),
+            revpar: Math.round(price * (occupancy / 100)),
+            adr: price
+        });
+    }
+    setPriceHistory(history);
+  }, []);
+
   // Generate initial demo data
   useEffect(() => {
-    const generateDemoHistory = () => {
-        const history = [];
-        let basePrice = 150 + Math.random() * 50;
-        let baseOccupancy = 65 + Math.random() * 10;
-
-        for (let i = 14; i >= 0; i--) {
-            const date = new Date();
-            date.setDate(date.getDate() - i);
-            
-            let price = basePrice;
-            let occupancy = baseOccupancy;
-
-            // Weekend effect
-            if ([5, 6].includes(date.getDay())) {
-                price *= 1.25;
-                occupancy *= 1.15;
-            }
-
-            // Random event simulation
-            if (Math.random() < 0.2) {
-                price *= 1.4;
-                occupancy *= 1.2;
-            }
-
-            // General noise
-            price *= (0.95 + Math.random() * 0.1);
-            occupancy *= (0.95 + Math.random() * 0.1);
-            
-            occupancy = Math.min(98, Math.max(55, occupancy));
-            price = Math.round(price);
-            
-            history.push({
-                date: date.toISOString().split('T')[0],
-                price,
-                occupancy: Math.round(occupancy),
-                revpar: Math.round(price * (occupancy / 100)),
-                adr: price
-            });
-        }
-        setPriceHistory(history);
-    };
-
     generateDemoHistory();
     loadHotels();
-  }, [selectedLocation]);
+  }, [selectedLocation, generateDemoHistory]);
 
   const addNewHotel = async () => {
     try {
@@ -245,7 +245,7 @@ const AmpliFiApp = () => {
       if (response.ok) {
         const data = await response.json();
         console.log('Response data:', data);
-
+        
         if (data.success) {
           const result = data.data;
           setCurrentRecommendation(result);
@@ -262,7 +262,11 @@ const AmpliFiApp = () => {
             revpar: result.kpis?.revpar || 0,
             adr: result.kpis?.adr || result.recommended_price
           };
-          setPriceHistory(prev => [newEntry, ...prev.slice(0, 13)]);
+          setPriceHistory(prev => {
+            const filtered = prev.filter(entry => entry.date !== targetDate);
+            const updated = [...filtered, newEntry].sort((a, b) => new Date(a.date) - new Date(b.date));
+            return updated.slice(-15);
+          });
         } else {
           throw new Error(data.error || 'Unknown API error');
         }
@@ -476,7 +480,7 @@ const AmpliFiApp = () => {
             <Zap className="h-6 w-6 text-blue-600 mt-1" />
             <div className="flex-1">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold text-blue-900">🤖 AI Analysis & Research</h3>
+                <h3 className="text-lg font-semibold text-blue-900"> AI Analysis & Research</h3>
                 <button
                   onClick={() => setExpandedAnalysis(!expandedAnalysis)}
                   className="flex items-center text-blue-600 hover:text-blue-700 text-sm font-medium transition-colors"
@@ -524,22 +528,22 @@ const AmpliFiApp = () => {
               {/* Strategy Tags */}
               <div className="flex flex-wrap items-center gap-2 mb-4">
                 <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm">
-                  🎯 Demand: {currentRecommendation.demand_level || 'Medium'}
+                   Demand: {currentRecommendation.demand_level || 'Medium'}
                 </span>
                 <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-                  🏨 {competitorData.length} Competitors
+                   {competitorData.length} Competitors
                 </span>
                 <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm">
-                  📅 {marketEvents.length} Market Events
+                   {marketEvents.length} Market Events
                 </span>
                 {currentRecommendation.pricing_strategy && (
                   <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm">
-                    📈 Strategy: {currentRecommendation.pricing_strategy}
+                     Strategy: {currentRecommendation.pricing_strategy}
                   </span>
                 )}
                 {currentRecommendation.market_position && (
                   <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-sm">
-                    🎲 Position: {currentRecommendation.market_position}
+                     Position: {currentRecommendation.market_position}
                   </span>
                 )}
               </div>
@@ -547,7 +551,7 @@ const AmpliFiApp = () => {
               {/* Expanded Analysis */}
               {expandedAnalysis && currentRecommendation.detailed_analysis && (
                 <div className="bg-white p-6 rounded-lg border border-blue-200 space-y-6">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4">📊 Comprehensive Analysis Report</h4>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4"> Comprehensive Analysis Report</h4>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div>
@@ -655,15 +659,15 @@ const AmpliFiApp = () => {
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             <div className="bg-white p-4 rounded-lg">
-              <h4 className="font-semibold text-blue-900 mb-2">🤖 AI-Powered Pricing</h4>
+              <h4 className="font-semibold text-blue-900 mb-2"> AI-Powered Pricing</h4>
               <p className="text-blue-700">Advanced algorithms analyze competitor rates, demand patterns, and market events</p>
             </div>
             <div className="bg-white p-4 rounded-lg">
-              <h4 className="font-semibold text-blue-900 mb-2">📊 Real-Time Insights</h4>
+              <h4 className="font-semibold text-blue-900 mb-2"> Real-Time Insights</h4>
               <p className="text-blue-700">Live market data and event detection for optimal revenue management</p>
             </div>
             <div className="bg-white p-4 rounded-lg">
-              <h4 className="font-semibold text-blue-900 mb-2">⚡ Auto-Pilot Mode</h4>
+              <h4 className="font-semibold text-blue-900 mb-2"> Auto-Pilot Mode</h4>
               <p className="text-blue-700">Automated pricing updates with customizable boundaries and manual override</p>
             </div>
           </div>
@@ -676,24 +680,46 @@ const AmpliFiApp = () => {
         <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h3 className="text-lg font-semibold mb-4">Price & Occupancy Trends</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={priceHistory}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 12 }}
-                tickFormatter={(date) => new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-              />
-              <YAxis yAxisId="price" orientation="left" />
-              <YAxis yAxisId="occupancy" orientation="right" />
-              <Tooltip
-                formatter={(value, name) => [
-                  name === 'price' ? `$${value}` : `${value}%`,
-                  name === 'price' ? 'Price' : 'Occupancy'
-                ]}
-              />
-              <Legend />
-              <Line yAxisId="price" type="monotone" dataKey="price" stroke="#3b82f6" strokeWidth={2} name="Price ($)" />
-              <Line yAxisId="occupancy" type="monotone" dataKey="occupancy" stroke="#10b981" strokeWidth={2} name="Occupancy (%)" />
+            <LineChart data={priceHistory.slice().sort((a, b) => new Date(a.date) - new Date(b.date))}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 12 }}
+                    tickFormatter={(date) => {
+                        const d = new Date(date);
+                        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                    }}
+                />
+                <YAxis yAxisId="price" orientation="left" label={{ value: 'Price ($)', angle: -90, position: 'insideLeft' }} />
+                <YAxis yAxisId="occupancy" orientation="right" label={{ value: 'Occupancy (%)', angle: 90, position: 'insideRight' }} />
+                <Tooltip
+                    formatter={(value, name) => [
+                        name === 'Price' ? `$${Number(value).toFixed(2)}` : `${Number(value).toFixed(1)}%`,
+                        name
+                    ]}
+                    labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                />
+                <Legend />
+                <Line 
+                    yAxisId="price" 
+                    type="monotone" 
+                    dataKey="price" 
+                    stroke="#3b82f6" 
+                    strokeWidth={2} 
+                    name="Price" 
+                    dot={false}
+                    connectNulls={true}
+                />
+                <Line 
+                    yAxisId="occupancy" 
+                    type="monotone" 
+                    dataKey="occupancy" 
+                    stroke="#10b981" 
+                    strokeWidth={2} 
+                    name="Occupancy" 
+                    dot={false}
+                    connectNulls={true}
+                />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -757,7 +783,7 @@ const AmpliFiApp = () => {
                 <div className="absolute bottom-full mb-2 w-64 bg-gray-800 text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <span className="font-bold">🔴 Live:</span> Sourced from real-time web search.
                   <br />
-                  <span className="font-bold">🤖 AI:</span> Sourced from general knowledge (e.g., public holidays).
+                  <span className="font-bold"> AI:</span> Sourced from general knowledge (e.g., public holidays).
                 </div>
               </div>
             </div>
@@ -1376,7 +1402,7 @@ const AmpliFiApp = () => {
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
                 <Zap className="h-8 w-8 text-blue-600" />
-                <h1 className="text-xl font-bold text-gray-900">AmpliFi RMS</h1>
+                <h1 className="text-xl font-bold text-gray-900">DEMO RMS AI</h1>
               </div>
               <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs ${
                 connectionStatus === 'connected' ? 'bg-green-100 text-green-700' :

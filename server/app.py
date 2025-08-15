@@ -220,12 +220,12 @@ def get_ai_recommendation(city, country, date, hotel_config):
     {json.dumps(tavily_events_raw)}
     </search_results>
 
-    Your task is to return a complete analysis in a single JSON object. All keys and sub-keys in the JSON MUST be populated with data.
+    Your task is to return a complete analysis in a single JSON object. All keys and sub-keys in the JSON MUST be populated with data. DO NOT return empty objects or arrays.
 
     CRITICAL REQUIREMENTS:
     1.  **competitors**: Generate a list of 15+ REAL competitor hotels in {city}. Include their name, brand, star rating, and a realistic price. This array MUST NOT be empty.
     2.  **detailed_analysis**: You MUST provide a detailed analysis for all sub-sections: "market_overview", "competitive_landscape", "demand_drivers", "pricing_strategy", "risk_factors", and "revenue_optimization". Each must have a 1-2 sentence analysis.
-    3.  **market_events**: Your primary source for events MUST be the `<search_results>`. Extract event details directly from there. For each event, add a "source" key with the value "Tavily". If the search results are empty, return an empty `market_events` array. DO NOT invent events or use your internal knowledge for event dates. Format each event as an object with 'name', 'date', 'impact', 'description', 'type', and 'source' keys.
+    3.  **market_events**: From the <search_results> provided, identify the most important events. For each event, you MUST find its CORRECT DATE from the text. Combine these with other events you know of. Format each as an object with 'name', 'date' (in YYYY-MM-DD format), 'impact', 'description', and 'type' keys. Discard irrelevant search results.
     
     Return ONLY a valid JSON object with the following keys fully populated: recommended_price, confidence, reasoning, detailed_analysis, competitors, market_events, kpis, market_factors, demand_level, market_position, pricing_strategy.
     Do not include any other text, formatting, or excuses for missing data."""
@@ -258,6 +258,8 @@ def get_ai_recommendation(city, country, date, hotel_config):
             
             required_keys = ['kpis', 'competitors', 'market_events', 'detailed_analysis']
             if all(key in result and result[key] is not None for key in required_keys):
+                # We no longer need to manually merge events, the AI now handles it.
+                # We still validate the output format.
                 if 'market_events' in result and isinstance(result['market_events'], list):
                     for event in result['market_events']:
                         if not all(k in event for k in ['name', 'date', 'impact']):
