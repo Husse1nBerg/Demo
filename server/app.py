@@ -9,6 +9,7 @@ import requests
 import os
 from dotenv import load_dotenv
 import time
+import re
 
 # Load environment variables
 load_dotenv()
@@ -23,6 +24,16 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 # API configurations
 TAVILY_API_KEY = os.getenv('TAVILY_API_KEY')
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
+
+
+def parse_json_from_string(text):
+    """Finds and parses the first valid JSON object from a string."""
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if not match:
+        raise json.JSONDecodeError("No JSON object found in the AI response.", text, 0)
+    
+    json_str = match.group(0)
+    return json.loads(json_str)
 
 def create_fallback_data(city, country, date, hotel_config, is_holiday_season, is_major_city, tavily_events):
     """Create realistic fallback data when AI fails"""
@@ -115,7 +126,8 @@ def search_events_with_tavily(city, country, date):
         return []
     try:
         search_date = datetime.strptime(date, '%Y-%m-%d')
-        query = f"major events, conferences, or festivals in {city}, {country} around {search_date.strftime('%B %Y')}"
+        # New, more specific query for a wider range of events
+        query = f"major events, concerts, movies, festivals, sports, F1 races, or celebrity appearances in {city}, {country} on or around {search_date.strftime('%B %d, %Y')}"
         response = requests.post(
             "https://api.tavily.com/search",
             json={"api_key": TAVILY_API_KEY, "query": query, "search_depth": "basic", "max_results": 5},
@@ -162,62 +174,81 @@ def get_ai_recommendation(city, country, date, hotel_config):
 
     is_holiday_season = "12-" in date or "01-" in date
     is_major_city = city.lower() in ['san francisco', 'new york', 'los angeles', 'chicago', 'toronto', 'vancouver']
-    tavily_events = search_events_with_tavily(city, country, date)
+    
+    # Step 1: Get raw search results from Tavily
+    tavily_events_raw = search_events_with_tavily(city, country, date)
 
+    # Step 2: Pass the raw search results to the AI for intelligent parsing
     prompt = f"""You are an expert hotel revenue management AI for {city}, {country} on {date}.
     Hotel Config: {json.dumps(hotel_config)}. Star Rating: {hotel_config.get('starRating', 3)}.
-    Real-time events found: {json.dumps(tavily_events)}.
-    CRITICAL: Provide a JSON response with 15+ REAL competitor hotels with SPECIFIC, existing names and brands in {city}. No generic names.
-    Return ONLY a JSON object with keys: recommended_price, confidence, reasoning, detailed_analysis, competitors, market_events, kpis, market_factors, demand_level, market_position, pricing_strategy."""
+    
+    Here are raw, real-time search results for events happening around this time. Use this information to inform your analysis:
+    <search_results>
+    {json.dumps(tavily_events_raw)}
+    </search_results>
+
+    Your task is to return a complete analysis in a single JSON object. All keys and sub-keys in the JSON MUST be populated with data. DO NOT return empty objects or arrays.
+
+    CRITICAL REQUIREMENTS:
+    1.  **competitors**: Generate a list of 15+ REAL competitor hotels in {city}. Include their name, brand, star rating, and a realistic price. This array MUST NOT be empty.
+    2.  **detailed_analysis**: You MUST provide a detailed analysis for all sub-sections: "market_overview", "competitive_landscape", "demand_drivers", "pricing_strategy", "risk_factors", and "revenue_optimization". Each must have a 1-2 sentence analysis.
+    3.  **market_events**: From the <search_results> provided, identify the most important events. For each event, you MUST find its CORRECT DATE from the text. Combine these with other events you know of. Format each as an object with 'name', 'date' (in YYYY-MM-DD format), 'impact', 'description', and 'type' keys. Discard irrelevant search results.
+    
+    Return ONLY a valid JSON object with the following keys fully populated: recommended_price, confidence, reasoning, detailed_analysis, competitors, market_events, kpis, market_factors, demand_level, market_position, pricing_strategy.
+    Do not include any other text, formatting, or excuses for missing data."""
 
     for attempt in range(2):
         try:
-            response = requests.post(
-                "https://api.anthropic.com/v1/messages",
-                json={
-                    "model": "claude-3-haiku-20240307", "max_tokens": 4000,
-                    "messages": [{"role": "user", "content": prompt}]
-                },
-                headers={
-                    "Content-Type": "application/json",
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01"
-                },
-                timeout=60
-            )
-
-            if response.status_code == 200:
-                content = response.json()['content'][0]['text'].strip()
-                try:
-                    json_start = content.find('{')
-                    json_end = content.rfind('}')
-                    if json_start != -1 and json_end != -1:
-                        json_str = content[json_start:json_end + 1]
-                        result = json.loads(json_str)
-                        
-                        required_keys = ['kpis', 'competitors', 'market_events', 'detailed_analysis']
-                        if all(key in result and result[key] is not None for key in required_keys):
-                            return result
-                        else:
-                            logger.warning("AI response was valid JSON but missed required keys. Retrying...")
-                            raise ValueError("Incomplete AI response")
-                    else:
-                        raise json.JSONDecodeError("No JSON object found in the AI response.", content, 0)
-                except (json.JSONDecodeError, ValueError) as e:
-                    logger.error(f"AI response parsing/validation failed on attempt {attempt + 1}: {e}")
-                    if attempt == 1:
-                        raise e
-                    time.sleep(1)
-            else:
-                logger.error(f"AI API request failed on attempt {attempt + 1}: {response.status_code} - {response.text}")
+            try:
+                response = requests.post(
+                    "https://api.anthropic.com/v1/messages",
+                    json={
+                        "model": "claude-3-haiku-20240307", "max_tokens": 4000,
+                        "messages": [{"role": "user", "content": prompt}]
+                    },
+                    headers={
+                        "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01"
+                    },
+                    timeout=30
+                )
+                response.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                logger.error(f"AI API request failed on attempt {attempt + 1}: {e}")
                 if attempt == 1:
-                    raise Exception("AI API request failed after multiple attempts.")
-        except Exception as e:
-            logger.error(f"General error in get_ai_recommendation on attempt {attempt + 1}: {e}")
-            if attempt == 1:
-                return create_fallback_data(city, country, date, hotel_config, is_holiday_season, is_major_city, tavily_events)
+                    return create_fallback_data(city, country, date, hotel_config, is_holiday_season, is_major_city, [])
+                time.sleep(1)
+                continue
 
-    return create_fallback_data(city, country, date, hotel_config, is_holiday_season, is_major_city, tavily_events)
+            content = response.json()['content'][0]['text']
+            result = parse_json_from_string(content)
+            
+            required_keys = ['kpis', 'competitors', 'market_events', 'detailed_analysis']
+            if all(key in result and result[key] is not None for key in required_keys):
+                # We no longer need to manually merge events, the AI now handles it.
+                # We still validate the output format.
+                if 'market_events' in result and isinstance(result['market_events'], list):
+                    for event in result['market_events']:
+                        if not all(k in event for k in ['name', 'date', 'impact']):
+                            raise ValueError(f"Malformed event object from AI: {event}")
+                
+                if not isinstance(result.get('detailed_analysis'), dict):
+                     result['detailed_analysis'] = {}
+                
+                analysis_keys = ["market_overview", "competitive_landscape", "demand_drivers", "pricing_strategy", "risk_factors", "revenue_optimization"]
+                for key in analysis_keys:
+                    result['detailed_analysis'].setdefault(key, "AI analysis for this section was not available.")
+
+                return result
+            else:
+                raise ValueError("Incomplete AI response: Missing one or more required keys.")
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            logger.error(f"AI response parsing/validation failed on attempt {attempt + 1}: {e}")
+            if attempt == 1:
+                return create_fallback_data(city, country, date, hotel_config, is_holiday_season, is_major_city, [])
+            time.sleep(1)
+
+    return create_fallback_data(city, country, date, hotel_config, is_holiday_season, is_major_city, [])
 
 # API Routes
 @app.route('/api/hotels', methods=['GET', 'POST'])

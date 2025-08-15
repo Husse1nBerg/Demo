@@ -10,6 +10,27 @@ import {
   Star, Edit, Crown, TrendingDown
 } from 'lucide-react';
 
+const initialState = {
+  isLoading: false,
+  activeTab: 'dashboard',
+  showAdvanced: false,
+  showAddHotel: false,
+  showPriceOverride: false,
+  expandedAnalysis: false,
+};
+
+function uiReducer(state, action) {
+  switch (action.type) {
+    case 'SET_LOADING':
+      return { ...state, isLoading: action.payload };
+    case 'SET_ACTIVE_TAB':
+      return { ...state, activeTab: action.payload };
+    // ... other UI state actions
+    default:
+      throw new Error();
+  }
+}
+
 const AmpliFiApp = () => {
   // Core State Management
   const [selectedLocation, setSelectedLocation] = useState({ city: 'Montreal', country: 'Canada', region: 'QC' });
@@ -89,7 +110,7 @@ const AmpliFiApp = () => {
 
   const loadHotels = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/hotels');
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/hotels`);
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.hotels && data.hotels.length > 0) {
@@ -107,7 +128,7 @@ const AmpliFiApp = () => {
 
   const addNewHotel = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/hotels', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/hotels`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newHotel)
@@ -140,7 +161,7 @@ const AmpliFiApp = () => {
 
   const handlePriceOverride = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/price-override', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/price-override`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -208,8 +229,8 @@ const AmpliFiApp = () => {
     try {
       const hotel = getCurrentHotel();
       console.log('Making request to backend...');
-      
-      const response = await fetch('http://localhost:5000/api/price-recommendation', {
+
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/price-recommendation`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -258,7 +279,7 @@ const AmpliFiApp = () => {
       
       // Show more helpful error message
       if (error.message.includes('Failed to fetch')) {
-        setError('Cannot connect to backend server. Make sure it is running on http://localhost:5000');
+        setError('Cannot connect to backend server. Make sure it is running on ${process.env.REACT_APP_API_URL}');
       }
     } finally {
       setIsLoading(false);
@@ -354,11 +375,14 @@ const AmpliFiApp = () => {
               <p className="text-2xl font-bold text-gray-900">
                 ${currentRecommendation?.recommended_price?.toFixed(2) || '--'}
               </p>
-              {currentRecommendation && (
-                <p className="text-sm text-green-600">
-                  {currentRecommendation.confidence}% confidence
-                </p>
-              )}
+{currentRecommendation && (
+  <p className="text-sm text-green-600">
+    {currentRecommendation.confidence > 1
+      ? currentRecommendation.confidence
+      : (currentRecommendation.confidence * 100).toFixed(0)}
+    % confidence
+  </p>
+)}
             </div>
             <DollarSign className="h-8 w-8 text-blue-600" />
           </div>
@@ -426,10 +450,15 @@ const AmpliFiApp = () => {
                 <h4 className="font-semibold text-gray-900 mb-2">🔍 Research Summary</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">{competitorData.length}</div>
-                    <div className="text-gray-600">Hotels Analyzed</div>
-                    <div className="text-xs text-gray-500">Real competitor data</div>
-                  </div>
+  <div className="text-2xl font-bold text-purple-600">
+    {currentRecommendation.confidence > 1
+      ? currentRecommendation.confidence
+      : (currentRecommendation.confidence * 100).toFixed(0)}
+    %
+  </div>
+  <div className="text-gray-600">Confidence</div>
+  <div className="text-xs text-gray-500">Analysis reliability</div>
+</div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-green-600">{marketEvents.length}</div>
                     <div className="text-gray-600">Market Events</div>
@@ -438,10 +467,10 @@ const AmpliFiApp = () => {
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-purple-600">{currentRecommendation.confidence}%</div>
-                    <div className="text-gray-600">Confidence</div>
-                    <div className="text-xs text-gray-500">Analysis reliability</div>
-                  </div>
+  <div className="text-2xl font-bold text-blue-600">{competitorData.length}</div>
+  <div className="text-gray-600">Hotels Analyzed</div>
+  <div className="text-xs text-gray-500">Real competitor data</div>
+</div>
                 </div>
               </div>
 

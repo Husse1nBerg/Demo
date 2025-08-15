@@ -14,6 +14,6 @@ A professional hotel revenue management system built with React and Flask, featu
 
 1. Backend Setup:
 ```bash
-cd backend
+cd server
 pip install -r requirements.txt
 python app.py
