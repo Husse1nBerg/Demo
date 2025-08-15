@@ -979,7 +979,7 @@ const AmpliFiApp = () => {
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
         <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">90-Day Demand Forecast</h3>
+            <h3 className="text-lg font-semibold">7-Day Demand Forecast</h3>
             <button onClick={fetchDemandForecast} disabled={demandForecast.loading} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 <RefreshCw className={`h-4 w-4 mr-2 ${demandForecast.loading ? 'animate-spin' : ''}`} />
                 Refresh Forecast
