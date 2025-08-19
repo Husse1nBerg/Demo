@@ -109,6 +109,7 @@ const AmpliFiApp = () => {
 
 const fetchPriceHistory = useCallback(async () => {
   try {
+    console.log('Fetching 14 days of historical performance data...');
     const response = await fetch(`${process.env.REACT_APP_API_URL}/api/historical-performance`, {
       method: 'POST',
       headers: {
@@ -116,18 +117,37 @@ const fetchPriceHistory = useCallback(async () => {
       },
       body: JSON.stringify({
         location: selectedLocation,
-        days: 30 
+        days: 14 // Fetching 14 days of historical data from web scraping
       })
     });
 
     if (response.ok) {
       const data = await response.json();
-      if (data.success && data.data.history) {
-        setPriceHistory(data.data.history);
+      console.log('Historical performance response:', data);
+      
+      if (data.success && data.data.history && data.data.history.length > 0) {
+        // Use the actual historical data from web scraping with real occupancy data
+        const historyData = data.data.history.map(item => ({
+          date: item.date,
+          price: item.price,
+          occupancy: item.occupancy, // This now comes from actual calculations based on scraped data
+          revpar: item.revpar,
+          adr: item.adr
+        }));
+        
+        console.log(`Loaded ${historyData.length} days of historical data`);
+        setPriceHistory(historyData);
+      } else {
+        console.log('No historical data available, using fallback demo data');
+        generateDemoHistory(); // Fallback to demo data if API fails
       }
+    } else {
+      console.error('Failed to fetch historical data, using demo data');
+      generateDemoHistory();
     }
   } catch (error) {
     console.error('Error fetching price history:', error);
+    generateDemoHistory(); // Fallback to demo data on error
   }
 }, [selectedLocation]);
 
@@ -175,8 +195,8 @@ const fetchPriceHistory = useCallback(async () => {
 
   // Generate initial demo data
  useEffect(() => {
-  fetchPriceHistory();
-  loadHotels();
+    fetchPriceHistory();
+    loadHotels();
 }, [selectedLocation, fetchPriceHistory]);
 
   const addNewHotel = async () => {
@@ -450,10 +470,7 @@ const fetchPriceHistory = useCallback(async () => {
               </p>
               {currentRecommendation && (
                 <p className="text-sm text-green-600">
-                  {currentRecommendation.confidence > 1
-                    ? currentRecommendation.confidence
-                    : (currentRecommendation.confidence * 100).toFixed(0)}
-                  % confidence
+                  {(currentRecommendation.confidence * 100).toFixed(0)}% confidence
                 </p>
               )}
             </div>
@@ -524,10 +541,7 @@ const fetchPriceHistory = useCallback(async () => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-purple-600">
-                      {currentRecommendation.confidence > 1
-                        ? currentRecommendation.confidence
-                        : (currentRecommendation.confidence * 100).toFixed(0)}
-                      %
+                      {(currentRecommendation.confidence * 100).toFixed(0)}%
                     </div>
                     <div className="text-gray-600">Confidence</div>
                     <div className="text-xs text-gray-500">Analysis reliability</div>

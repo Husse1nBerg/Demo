@@ -97,7 +97,7 @@ def create_fallback_data(city, country, date, hotel_config, is_holiday_season, i
     rooms_sold = int(total_rooms * (base_occupancy / 100))
     
     return {
-        "recommended_price": round(base_price, 2), "confidence": 85,
+        "recommended_price": round(base_price, 2), "confidence": 0.60,  # Low confidence for fallback data
         "reasoning": f"Fallback pricing for {city} due to API error. Using standard model for {'holiday season' if is_holiday_season else 'regular season'}.",
         "detailed_analysis": {
             "market_overview": "Fallback data used due to an API error. Market analysis could not be performed.",
@@ -332,12 +332,52 @@ def get_price_recommendation():
     try:
         data = request.get_json()
         location = data.get('location', {})
-        recommendation = get_ai_recommendation(
-            location.get('city', 'Montreal'),
-            location.get('country', 'Canada'),
-            data.get('date', datetime.now().strftime('%Y-%m-%d')),
-            data.get('hotelConfig', {})
+        date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+        hotel_config = data.get('hotelConfig', {})
+        
+        city = location.get('city', 'Montreal')
+        country = location.get('country', 'Canada')
+        
+        logger.info(f"Getting price recommendation for {city}, {country} on {date}")
+        
+        # Use our new ScrapingBee-based system instead of AI API
+        analytics = EnhancedHotelAnalytics()
+        
+        # Get competitor data via web scraping
+        competitors = analytics.get_comprehensive_competitor_analysis(city, country, date)
+        logger.info(f"Found {len(competitors)} competitors via ScrapingBee")
+        
+        # Get market intelligence 
+        market_intel = analytics.get_market_intelligence(city, country, date)
+        
+        # Calculate optimal pricing with our new confidence system
+        pricing_result = analytics.calculate_optimal_pricing(
+            f"{city}, {country}", date, hotel_config, competitors, market_intel
         )
+        
+        # Format response to match expected frontend structure
+        recommendation = {
+            "recommended_price": pricing_result["recommended_price"],
+            "confidence": pricing_result["confidence_score"],  # This is now 0.0-1.0
+            "reasoning": pricing_result["reasoning"],
+            "competitors": competitors,
+            "market_events": market_intel.get("market_events", []),
+            "kpis": pricing_result["kpis"],
+            "market_position": pricing_result["market_position"],
+            "pricing_strategy": "ScrapingBee Data-Driven",
+            "demand_level": "medium",  # Could be enhanced based on competitor analysis
+            "detailed_analysis": {
+                "market_overview": f"Analysis based on {len(competitors)} scraped competitors from {len(set(c.get('source', '') for c in competitors))} sources",
+                "competitive_landscape": pricing_result["competitor_analysis"]["price_range"],
+                "demand_drivers": pricing_result["demand_drivers"],
+                "pricing_strategy": "Dynamic pricing based on real competitor data via ScrapingBee API",
+                "risk_factors": "Data quality dependent on scraping success",
+                "revenue_optimization": f"Projected RevPAR: ${pricing_result['kpis']['revpar']:.2f}"
+            }
+        }
+        
+        logger.info(f"Recommendation confidence: {pricing_result['confidence_score']:.3f} ({pricing_result['confidence_score']*100:.1f}%)")
+        
         return jsonify({"success": True, "data": recommendation})
     except Exception as e:
         logger.error(f"Error in price recommendation endpoint: {e}")
@@ -453,14 +493,17 @@ def get_historical_performance_data():
     try:
         data = request.get_json()
         location = data.get('location', {})
-        days = data.get('days', 15)
+        days = data.get('days', 14)
+
+        logger.info(f"Fetching {days} days of historical performance for {location.get('city')}, {location.get('country')}")
         
         analytics = EnhancedHotelAnalytics()
         performance_data = analytics.get_historical_performance(
             f"{location.get('city')}, {location.get('country')}",
             days
         )
-        
+
+        logger.info(f"Historical performance data contains {len(performance_data.get('history', []))} data points")
         return jsonify({"success": True, "data": performance_data})
     except Exception as e:
         logger.error(f"Error in historical performance endpoint: {e}")
