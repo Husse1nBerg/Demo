@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app)
 
 # API configurations
 TAVILY_API_KEY = os.getenv('TAVILY_API_KEY')
@@ -444,6 +444,26 @@ def direct_booking_intelligence():
         return jsonify({"success": True, "savings": savings})
     except Exception as e:
         logger.error(f"Error in direct booking intelligence endpoint: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+@app.route('/api/historical-performance', methods=['POST'])
+def get_historical_performance_data():
+    try:
+        data = request.get_json()
+        location = data.get('location', {})
+        days = data.get('days', 15)
+        
+        analytics = EnhancedHotelAnalytics()
+        performance_data = analytics.get_historical_performance(
+            f"{location.get('city')}, {location.get('country')}",
+            days
+        )
+        
+        return jsonify({"success": True, "data": performance_data})
+    except Exception as e:
+        logger.error(f"Error in historical performance endpoint: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':

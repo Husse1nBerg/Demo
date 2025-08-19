@@ -11,6 +11,10 @@ import {
 } from 'lucide-react';
 
 
+
+
+
+
 const AmpliFiApp = () => {
   // Core State Management
   const [selectedLocation, setSelectedLocation] = useState({ city: 'Montreal', country: 'Canada', region: 'QC' });
@@ -103,6 +107,30 @@ const AmpliFiApp = () => {
     }
   };
 
+const fetchPriceHistory = useCallback(async () => {
+  try {
+    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/historical-performance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        location: selectedLocation,
+        days: 30 
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success && data.data.history) {
+        setPriceHistory(data.data.history);
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching price history:', error);
+  }
+}, [selectedLocation]);
+
   const generateDemoHistory = useCallback(() => {
     const history = [];
     let basePrice = 150 + Math.random() * 50;
@@ -146,10 +174,10 @@ const AmpliFiApp = () => {
   }, []);
 
   // Generate initial demo data
-  useEffect(() => {
-    generateDemoHistory();
-    loadHotels();
-  }, [selectedLocation, generateDemoHistory]);
+ useEffect(() => {
+  fetchPriceHistory();
+  loadHotels();
+}, [selectedLocation, fetchPriceHistory]);
 
   const addNewHotel = async () => {
     try {

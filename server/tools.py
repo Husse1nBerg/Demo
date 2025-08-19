@@ -6,6 +6,8 @@ from typing import List, Dict, Optional
 import sqlite3
 from contextlib import contextmanager
 import logging
+from bs4 import BeautifulSoup
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,7 @@ class EnhancedHotelAnalytics:
     def __init__(self):
         self.anthropic_api_url = "https://api.anthropic.com/v1/messages"
         self.model = "claude-sonnet-4-20250514"
+        self.scrapingbee_api_key = os.getenv('SCRAPINGBEE_API_KEY')
     
     def _make_ai_request(self, prompt: str, max_tokens: int = 1500) -> Optional[str]:
         """Make request to Claude API"""
@@ -51,49 +54,72 @@ class EnhancedHotelAnalytics:
             return None
     
     def get_comprehensive_competitor_analysis(self, city: str, country: str, date: str) -> List[Dict]:
-        """Get comprehensive competitor analysis using AI"""
-        logger.info(f"Analyzing competitors in {city}, {country}")
-        
-        prompt = f"""
-        You are a hotel revenue management expert conducting competitor analysis for {city}, {country} on {date}.
-        
-        Research and provide realistic competitor hotel pricing data. Consider:
-        1. Major hotel chains (Marriott, Hilton, Hyatt, IHG, Accor)
-        2. Boutique and independent hotels  
-        3. Different price segments (budget, mid-scale, upscale, luxury)
-        4. Current market conditions and seasonal factors
-        5. Location factors (downtown, airport, suburban)
-        
-        Return ONLY valid JSON array with 12-15 hotels in this format:
-        [
-            {{
-                "name": "Hotel Name",
-                "price": 299.99,
-                "location": "Downtown/Airport/Suburb", 
-                "brand": "Marriott/Hilton/Independent/etc",
-                "stars": 3,
-                "amenities": ["wifi", "pool", "gym"],
-                "room_type": "Standard Queen/King Suite/etc",
-                "distance_km": 2.5
-            }}
-        ]
-        
-        Ensure prices are realistic for {city} market conditions.
-        Include mix of all price segments.
-        Only return valid JSON, no explanatory text.
         """
-        
-        response = self._make_ai_request(prompt)
-        if response:
-            try:
-                competitors = json.loads(response)
-                if isinstance(competitors, list) and competitors:
-                    self._store_competitor_data(f"{city}, {country}", competitors, date)
-                    return competitors
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse competitor JSON: {e}")
-        
-        return []
+        Get competitor hotel prices by scraping Google Hotels using the ScrapingBee API.
+        """
+        if not self.scrapingbee_api_key:
+            logger.error("SCRAPINGBEE_API_KEY not found in .env file.")
+            return []
+
+        logger.info(f"Scraping competitor prices for {city}, {country} via ScrapingBee")
+
+        google_hotels_url = f"https://www.google.com/travel/hotels/{city}?q=hotels%20in%20{city}%20{country}&checkin={date}&checkout={date}&hl=en&gl=us"
+
+        try:
+            response = requests.get(
+                url='https://app.scrapingbee.com/api/v1/',
+                params={
+                    'api_key': self.scrapingbee_api_key,
+                    'url': google_hotels_url,
+                    'render_js': 'true',  # Let ScrapingBee render JavaScript
+                },
+                timeout=60  # Increase timeout for scraping requests
+            )
+            response.raise_for_status()
+
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            competitors = []
+            
+            # NOTE: These selectors are based on the current structure of Google Hotels
+            # and may need to be updated if the site changes.
+            hotel_cards = soup.select('div[jscontroller="g233te"]')
+
+            for card in hotel_cards:
+                name_tag = card.select_one('h2.BgYkof')
+                price_tag = card.select_one('span.MW1oTb')
+                
+                if name_tag and price_tag:
+                    name = name_tag.get_text(strip=True)
+                    price_text = price_tag.get_text(strip=True).replace('$', '').replace(',', '')
+                    
+                    try:
+                        price = float(price_text)
+                        
+                        competitors.append({
+                            "name": name,
+                            "price": price,
+                            "location": "N/A",
+                            "brand": "N/A",
+                            "stars": 0,
+                            "amenities": [],
+                            "room_type": "Standard",
+                            "distance_km": 0.0
+                        })
+                    except ValueError:
+                        continue
+            
+            if competitors:
+                self._store_competitor_data(f"{city}, {country}", competitors, date)
+            
+            return competitors
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error calling ScrapingBee API: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"An unexpected error occurred during scraping: {e}")
+            return []
     
     def get_market_intelligence(self, city: str, country: str, date: str) -> Dict:
         """Get comprehensive market intelligence"""
@@ -173,7 +199,7 @@ class EnhancedHotelAnalytics:
         
         # Fallback to demo data
         return [
-            {"date": (datetime.now() + timedelta(days=i)).strftime('%Y-%m-%d'), "demand_level": "medium", "driver": "Standard demand"} for i in range(7)
+            {"date": (datetime.now() + timedelta(days=i)).strftime('%Y-%m-%d'), "demand_level": "medium", "driver": "Standard demand"} for i in range(15)
         ]
 
     def get_upsell_opportunities(self, hotel_config: Dict) -> List[Dict]:
@@ -235,11 +261,11 @@ class EnhancedHotelAnalytics:
         }
     
     def calculate_optimal_pricing(self, 
-                                location: str,
-                                date: str, 
-                                hotel_config: Dict,
-                                competitors: List[Dict],
-                                market_intel: Dict) -> Dict:
+                                  location: str,
+                                  date: str, 
+                                  hotel_config: Dict,
+                                  competitors: List[Dict],
+                                  market_intel: Dict) -> Dict:
         """Calculate optimal pricing using advanced revenue management principles"""
         
         base_config = {
@@ -253,6 +279,7 @@ class EnhancedHotelAnalytics:
         # Competitor pricing analysis
         competitor_prices = [c.get('price', 0) for c in competitors if c.get('price', 0) > 50]
         
+        competitor_stats = {}
         if competitor_prices:
             competitor_stats = {
                 'min': min(competitor_prices),
@@ -260,10 +287,9 @@ class EnhancedHotelAnalytics:
                 'avg': sum(competitor_prices) / len(competitor_prices),
                 'median': sorted(competitor_prices)[len(competitor_prices)//2]
             }
-            # Position at competitive rate (5-10% below average for volume)
             base_price = competitor_stats['avg'] * 0.92
         else:
-            base_price = 150  # Market standard fallback
+            base_price = 150
         
         # Event-based demand adjustments
         events = market_intel.get('market_events', [])
@@ -284,21 +310,13 @@ class EnhancedHotelAnalytics:
         target_date = datetime.strptime(date, "%Y-%m-%d")
         day_of_week = target_date.weekday()
         
-        # Day of week adjustments
         dow_multipliers = {
-            0: 0.95,  # Monday
-            1: 0.98,  # Tuesday  
-            2: 1.00,  # Wednesday
-            3: 1.05,  # Thursday
-            4: 1.20,  # Friday
-            5: 1.25,  # Saturday
-            6: 1.10   # Sunday
+            0: 0.95, 1: 0.98, 2: 1.00, 3: 1.05,
+            4: 1.20, 5: 1.25, 6: 1.10
         }
         
-        # Seasonal adjustments based on location
         seasonal_multiplier = self._get_seasonal_multiplier(target_date, location)
         
-        # Lead time pricing (book closer = higher price if demand is good)
         lead_time = (target_date - datetime.now()).days
         lead_time_multiplier = 1.0
         if lead_time < 7 and high_impact_events:
@@ -306,62 +324,57 @@ class EnhancedHotelAnalytics:
         elif lead_time > 60:
             lead_time_multiplier = 0.95
         
-        # Calculate final price
         calculated_price = (base_price * demand_multiplier * dow_multipliers.get(day_of_week, 1.0) *
                           seasonal_multiplier *
                           lead_time_multiplier)
         
-        # Apply min/max constraints
-        recommended_price = max(config['minPrice'], 
-                              min(config['maxPrice'], calculated_price))
+        recommended_price = max(config['minPrice'], min(config['maxPrice'], calculated_price))
         recommended_price = round(recommended_price, 2)
         
-        # Calculate projected metrics
+        # --- DYNAMIC OCCUPANCY CALCULATION ---
         base_occupancy = config['baseOccupancy']
+        
+        # Start with event-based boost
         projected_occupancy = min(95, base_occupancy + occupancy_boost)
+
+        # Adjust based on price competitiveness (elasticity model)
+        if competitor_stats and competitor_stats.get('avg'):
+            price_ratio = recommended_price / competitor_stats['avg']
+            # For every 1% more expensive than average, reduce occupancy by 0.5%
+            # For every 1% cheaper than average, increase occupancy by 0.25%
+            elasticity_adjustment = (1 - price_ratio) * 25
+            projected_occupancy = min(95, max(30, projected_occupancy + elasticity_adjustment))
         
-        # Price elasticity consideration
-        if competitor_stats and recommended_price > competitor_stats.get('avg', base_price) * 1.1:
-            projected_occupancy *= 0.9  # Reduce occupancy if pricing too high
-        
-        total_rooms = config['totalRooms']
-        rooms_sold = int(total_rooms * (projected_occupancy / 100))
+        # Calculate performance metrics
+        rooms_sold = int(config['totalRooms'] * (projected_occupancy / 100))
         adr = recommended_price
         revpar = adr * (projected_occupancy / 100)
         total_revenue = rooms_sold * adr
         
-        # Confidence scoring
+        # Generate insights
         confidence = self._calculate_confidence(competitors, events, lead_time)
+        reasoning = self._generate_pricing_reasoning(competitors, events, day_of_week, 
+                                                    seasonal_multiplier, demand_multiplier)
         
-        # Generate reasoning
-        reasoning = self._generate_pricing_reasoning(
-            competitors, events, day_of_week, seasonal_multiplier, demand_multiplier
-        )
-        
-        result = {
+        return {
             "recommended_price": recommended_price,
-            "confidence": confidence,
+            "projected_occupancy": round(projected_occupancy, 1),
+            "confidence_score": confidence,
             "reasoning": reasoning,
-            "competitors": competitors[:10],
-            "market_events": events,
-            "market_factors": [e.get('name', '') for e in events[:5]],
+            "market_position": "competitive" if competitor_stats else "market_rate",
+            "competitor_analysis": {
+                "count": len(competitors),
+                "avg_price": round(competitor_stats.get('avg', 0), 2),
+                "price_range": f"${competitor_stats.get('min', 0):.0f} - ${competitor_stats.get('max', 0):.0f}" if competitor_stats else "N/A"
+            },
+            "demand_drivers": [e.get('name', '') for e in events if e.get('impact') in ['high', 'medium']],
             "kpis": {
-                "projected_occupancy": round(projected_occupancy, 1),
                 "adr": round(adr, 2),
                 "revpar": round(revpar, 2),
                 "projected_revenue": round(total_revenue, 2),
                 "rooms_sold": rooms_sold
-            },
-            "price_range": {
-                "min": config['minPrice'],
-                "max": config['maxPrice'],
-                "competitor_avg": round(competitor_stats.get('avg', base_price), 2) if competitor_prices else None
-            },
-            "demand_level": "high" if high_impact_events else "medium" if medium_impact_events else "normal",
-            "market_position": "competitive" if competitor_prices else "market-rate"
+            }
         }
-        
-        return result
     
     def _get_seasonal_multiplier(self, date: datetime, location: str) -> float:
         """Get seasonal pricing multiplier based on location and date"""
@@ -488,7 +501,7 @@ class EnhancedHotelAnalytics:
         except Exception as e:
             logger.error(f"Error storing market intelligence: {e}")
 
-    def get_historical_performance(self, location: str, days: int = 30) -> Dict:
+    def get_historical_performance(self, location: str, days: int = 15) -> Dict:
         """Get historical pricing performance data"""
         try:
             with get_db_connection() as conn:
@@ -597,3 +610,23 @@ def get_key_performance_indicators(recommended_price: float,
         "revenue_per_room": round(revenue_per_room, 2),
         "market_penetration": min(100, (current_occupancy / 85) * 100)  # Assuming 85% is market max
     }
+
+def search_events_with_tavily(city, country, date):
+    """Search for events using Tavily API"""
+    TAVILY_API_KEY = os.getenv('TAVILY_API_KEY')
+    if not TAVILY_API_KEY:
+        logger.warning("Tavily API key not found.")
+        return []
+    try:
+        search_date = datetime.strptime(date, '%Y-%m-%d')
+        # New, more specific query for a wider range of events
+        query = f"major events, concerts, movies, festivals, sports, F1 races, or celebrity appearances in {city}, {country} on or around {search_date.strftime('%B %d, %Y')}"
+        response = requests.post(
+            "https://api.tavily.com/search",
+            json={"api_key": TAVILY_API_KEY, "query": query, "search_depth": "basic", "max_results": 5},
+            timeout=10
+        )
+        return response.json().get('results', []) if response.status_code == 200 else []
+    except Exception as e:
+        logger.error(f"Error searching Tavily events: {e}")
+        return []
