@@ -8,8 +8,10 @@ from contextlib import contextmanager
 import logging
 from bs4 import BeautifulSoup
 
-
 logger = logging.getLogger(__name__)
+
+# Simple in-memory cache to avoid repeated API calls
+_api_cache = {}
 
 @contextmanager
 def get_db_connection():
@@ -26,7 +28,9 @@ class EnhancedHotelAnalytics:
     def __init__(self):
         self.anthropic_api_url = "https://api.anthropic.com/v1/messages"
         self.model = "claude-sonnet-4-20250514"
-        self.scrapingbee_api_key = os.getenv('SCRAPINGBEE_API_KEY')
+        self.predicthq_api_key = os.getenv('PREDICTHQ_API_KEY')
+        self.serpapi_api_key = os.getenv('SERPAPI_API_KEY')
+        self.ticketmaster_api_key = os.getenv('TICKETMASTER_API_KEY')
     
     def _make_ai_request(self, prompt: str, max_tokens: int = 1500) -> Optional[str]:
         """Make request to Claude API"""
@@ -52,556 +56,58 @@ class EnhancedHotelAnalytics:
         except Exception as e:
             logger.error(f"Error making AI request: {e}")
             return None
-    
+
     def get_comprehensive_competitor_analysis(self, city: str, country: str, date: str) -> List[Dict]:
         """
-        Get competitor hotel prices using ScrapingBee API with creative historical data solutions.
-        
-        CURRENT DATES: Scrapes Google Hotels, Booking.com, Hotels.com in real-time
-        HISTORICAL DATES: Uses creative strategies:
-        1. Booking.com calendar view for historical pricing patterns
-        2. Previous year data (same date last year) from multiple sites  
-        3. Kayak price trends and historical patterns
-        4. TripAdvisor historical pricing data
-        5. Cross-site deduplication and enhancement
-        
-        NO HARDCODED DATA - Everything comes from actual web scraping via ScrapingBee API.
+        Get competitor hotel prices using SerpApi Google Hotels API.
         """
-        if not self.scrapingbee_api_key:
-            logger.error("SCRAPINGBEE_API_KEY not found - ScrapingBee is required for data collection")
+        if not self.serpapi_api_key:
+            logger.error("SERPAPI_API_KEY not found - SerpApi is required for data collection")
             return []
 
-        target_date = datetime.strptime(date, '%Y-%m-%d')
-        days_ago = (datetime.now() - target_date).days
-        
-        if days_ago > 1:
-            logger.info(f"Scraping historical competitor data for {city}, {country} on {date} ({days_ago} days ago)")
-            return self._scrape_historical_pricing_data(city, country, date, days_ago)
-        else:
-            logger.info(f"Scraping current competitor prices for {city}, {country} on {date}")
-            return self._scrape_current_pricing_data(city, country, date)
+        # Check cache first
+        cache_key = f"{city}_{country}_{date}"
+        if cache_key in _api_cache:
+            logger.info(f"Returning cached competitor data for {cache_key}")
+            return _api_cache[cache_key]
 
-    def _scrape_current_pricing_data(self, city: str, country: str, date: str) -> List[Dict]:
-        """Scrape current pricing data from multiple sources using ScrapingBee"""
-        competitors = []
-        
-        # Strategy 1: Google Hotels
-        google_competitors = self._scrape_google_hotels(city, country, date)
-        competitors.extend(google_competitors)
-        
-        # Strategy 2: Booking.com
-        booking_competitors = self._scrape_booking_com(city, country, date)
-        competitors.extend(booking_competitors)
-        
-        # Strategy 3: Hotels.com
-        hotels_competitors = self._scrape_hotels_com(city, country, date)
-        competitors.extend(hotels_competitors)
-        
-        # Remove duplicates and ensure minimum data
-        competitors = self._deduplicate_and_enhance_competitors(competitors, city, country)
-        
-        if competitors:
-            self._store_competitor_data(f"{city}, {country}", competitors, date)
-            logger.info(f"Successfully scraped {len(competitors)} current competitor hotels")
-        
-        return competitors
+        params = {
+            "api_key": self.serpapi_api_key,
+            "engine": "google_hotels",
+            "q": f"hotels in {city}, {country}",
+            "check_in_date": date,
+            "check_out_date": (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d'),
+            "adults": "2",
+            "currency": "USD",
+            "hl": "en"
+        }
 
-    def _scrape_historical_pricing_data(self, city: str, country: str, date: str, days_ago: int) -> List[Dict]:
-        """Creative historical pricing data scraping using multiple strategies"""
-        competitors = []
-        
-        # Strategy 1: Try booking.com calendar view for historical pricing patterns
-        booking_historical = self._scrape_booking_historical_calendar(city, country, date)
-        competitors.extend(booking_historical)
-        
-        # Strategy 2: Scrape exactly one year ago data (most booking sites show this)
-        previous_year_data = self._scrape_previous_year_data(city, country, date)
-        competitors.extend(previous_year_data)
-        
-        # Strategy 3: Use Kayak price trends and historical data
-        kayak_historical = self._scrape_kayak_price_trends(city, country, date)
-        competitors.extend(kayak_historical)
-        
-        # Strategy 4: TripAdvisor historical pricing patterns
-        tripadvisor_historical = self._scrape_tripadvisor_historical(city, country, date)
-        competitors.extend(tripadvisor_historical)
-        
-        # Enhance and deduplicate results
-        competitors = self._deduplicate_and_enhance_competitors(competitors, city, country)
-        
-        if competitors:
-            self._store_competitor_data(f"{city}, {country}", competitors, date)
-            logger.info(f"Successfully scraped {len(competitors)} historical competitor hotels")
-        
-        return competitors
-
-    def _scrape_google_hotels(self, city: str, country: str, date: str) -> List[Dict]:
-        """Scrape Google Hotels using ScrapingBee"""
         try:
-            checkout_date = (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
-            url = f"https://www.google.com/travel/hotels/{city}?q=hotels%20in%20{city}%20{country}&checkin={date}&checkout={checkout_date}&hl=en&gl=us"
-            
-            response = requests.get(
-                url='https://app.scrapingbee.com/api/v1/',
-                params={
-                    'api_key': self.scrapingbee_api_key,
-                    'url': url,
-                    'render_js': 'true',
-                    'wait_for': 3000,
-                    'window_width': 1920,
-                    'window_height': 1080
-                },
-                timeout=60
-            )
+            response = requests.get('https://serpapi.com/search.json', params=params, timeout=60)
             response.raise_for_status()
-
-            soup = BeautifulSoup(response.content, 'html.parser')
+            data = response.json()
+            
             competitors = []
-            
-            # Enhanced selectors for Google Hotels
-            selectors = [
-                ('div[jscontroller]', 'h2, h3', 'span[jsname]', '.price'),
-                ('div[data-ved]', '.hotel-name, h2, h3', '.price, [data-price]'),
-                ('[role="button"]', 'h2, h3', 'span:contains("$")'),
-                ('.hotel-result', '.name', '.rate')
-            ]
-            
-            for container_sel, name_sel, price_sel, *_ in selectors:
-                hotel_cards = soup.select(container_sel)
-                
-                for card in hotel_cards:
-                    name_elem = card.select_one(name_sel)
-                    price_elem = card.select_one(price_sel) if len(selectors[0]) > 3 else card.select_one(price_sel)
-                    
-                    if name_elem and price_elem:
-                        name = name_elem.get_text(strip=True)
-                        price_text = price_elem.get_text(strip=True)
-                        
-                        price_match = re.search(r'[\$]?(\d{1,4})', price_text.replace(',', ''))
-                        if price_match and name:
-                            price = float(price_match.group(1))
-                            if 50 <= price <= 2000 and len(name) > 3:
-                                competitors.append({
-                                    "name": name,
-                                    "price": price,
-                                    "source": "Google Hotels",
-                                    "location": f"{city}, {country}",
-                                    "brand": self._extract_brand(name),
-                                    "stars": self._estimate_stars(name, price)
-                                })
-                
-                if competitors:
-                    break
-            
-            logger.info(f"Google Hotels: Found {len(competitors)} hotels")
-            return competitors
-            
-        except Exception as e:
-            logger.error(f"Error scraping Google Hotels: {e}")
-            return []
-
-    def _scrape_booking_com(self, city: str, country: str, date: str) -> List[Dict]:
-        """Scrape Booking.com using ScrapingBee"""
-        try:
-            checkout_date = (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
-            url = f"https://www.booking.com/searchresults.html?ss={city}%2C+{country}&checkin={date}&checkout={checkout_date}&group_adults=2"
-            
-            response = requests.get(
-                url='https://app.scrapingbee.com/api/v1/',
-                params={
-                    'api_key': self.scrapingbee_api_key,
-                    'url': url,
-                    'render_js': 'true',
-                    'wait_for': 4000,
-                    'window_width': 1920,
-                    'window_height': 1080
-                },
-                timeout=60
-            )
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.content, 'html.parser')
-            competitors = []
-            
-            # Booking.com selectors
-            selectors = [
-                ('[data-testid="property-card"]', '[data-testid="title"]', '[data-testid="price-and-discounted-price"]'),
-                ('.sr_property_block', '.sr-hotel__name', '.bui-price-display__value'),
-                ('.property_title', '.property_title a', '.price'),
-                ('[data-hotel-id]', 'h3', '.prco-valign-middle-helper')
-            ]
-            
-            for container_sel, name_sel, price_sel in selectors:
-                hotel_cards = soup.select(container_sel)
-                
-                for card in hotel_cards[:15]:  # Limit to first 15 results
-                    name_elem = card.select_one(name_sel)
-                    price_elem = card.select_one(price_sel)
-                    
-                    if name_elem and price_elem:
-                        name = name_elem.get_text(strip=True)
-                        price_text = price_elem.get_text(strip=True)
-                        
-                        price_match = re.search(r'[\$\€\£]?(\d{1,4})', price_text.replace(',', ''))
-                        if price_match and name:
-                            price = float(price_match.group(1))
-                            if 50 <= price <= 2000 and len(name) > 3:
-                                competitors.append({
-                                    "name": name,
-                                    "price": price,
-                                    "source": "Booking.com",
-                                    "location": f"{city}, {country}",
-                                    "brand": self._extract_brand(name),
-                                    "stars": self._estimate_stars(name, price)
-                                })
-                
-                if competitors:
-                    break
-            
-            logger.info(f"Booking.com: Found {len(competitors)} hotels")
-            return competitors
-            
-        except Exception as e:
-            logger.error(f"Error scraping Booking.com: {e}")
-            return []
-
-    def _scrape_hotels_com(self, city: str, country: str, date: str) -> List[Dict]:
-        """Scrape Hotels.com using ScrapingBee"""
-        try:
-            checkout_date = (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
-            url = f"https://www.hotels.com/search.do?destination={city}%2C+{country}&startDate={date}&endDate={checkout_date}&adults=2"
-            
-            response = requests.get(
-                url='https://app.scrapingbee.com/api/v1/',
-                params={
-                    'api_key': self.scrapingbee_api_key,
-                    'url': url,
-                    'render_js': 'true',
-                    'wait_for': 4000
-                },
-                timeout=60
-            )
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.content, 'html.parser')
-            competitors = []
-            
-            # Hotels.com selectors
-            selectors = [
-                ('[data-stid="section-results"]', '[data-stid="content-hotel-title"]', '[data-stid="price-display-value"]'),
-                ('.hotel-wrap', '.p-name', '.price-current'),
-                ('[data-selenium="hotel-item"]', '.hotel-name', '.current-price')
-            ]
-            
-            for container_sel, name_sel, price_sel in selectors:
-                hotel_cards = soup.select(container_sel)
-                
-                for card in hotel_cards[:12]:
-                    name_elem = card.select_one(name_sel)
-                    price_elem = card.select_one(price_sel)
-                    
-                    if name_elem and price_elem:
-                        name = name_elem.get_text(strip=True)
-                        price_text = price_elem.get_text(strip=True)
-                        
-                        price_match = re.search(r'[\$]?(\d{1,4})', price_text.replace(',', ''))
-                        if price_match and name:
-                            price = float(price_match.group(1))
-                            if 50 <= price <= 2000 and len(name) > 3:
-                                competitors.append({
-                                    "name": name,
-                                    "price": price,
-                                    "source": "Hotels.com",
-                                    "location": f"{city}, {country}",
-                                    "brand": self._extract_brand(name),
-                                    "stars": self._estimate_stars(name, price)
-                                })
-                
-                if competitors:
-                    break
-            
-            logger.info(f"Hotels.com: Found {len(competitors)} hotels")
-            return competitors
-            
-        except Exception as e:
-            logger.error(f"Error scraping Hotels.com: {e}")
-            return []
-
-    def _scrape_booking_historical_calendar(self, city: str, country: str, date: str) -> List[Dict]:
-        """Scrape Booking.com calendar view for historical pricing patterns"""
-        try:
-            # Booking.com sometimes shows pricing calendars with historical data
-            url = f"https://www.booking.com/searchresults.html?ss={city}%2C+{country}&calendar_view=1"
-            
-            response = requests.get(
-                url='https://app.scrapingbee.com/api/v1/',
-                params={
-                    'api_key': self.scrapingbee_api_key,
-                    'url': url,
-                    'render_js': 'true',
-                    'wait_for': 5000
-                },
-                timeout=60
-            )
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.content, 'html.parser')
-            competitors = []
-            
-            # Look for calendar pricing data or historical references
-            calendar_prices = soup.select('.calendar-price, [data-calendar-price], .price-calendar')
-            historical_refs = soup.select('[data-historical-price], .last-year-price, .price-comparison')
-            
-            # Extract any historical pricing patterns found
-            for element in calendar_prices + historical_refs:
-                price_text = element.get_text(strip=True)
-                price_match = re.search(r'[\$]?(\d{1,4})', price_text.replace(',', ''))
-                if price_match:
-                    # This is a basic implementation - in practice you'd extract hotel names too
+            for hotel in data.get('properties', []):
+                if hotel.get('price'):
                     competitors.append({
-                        "name": f"Calendar Hotel {len(competitors) + 1}",
-                        "price": float(price_match.group(1)),
-                        "source": "Booking.com Calendar",
+                        "name": hotel.get('name'),
+                        "price": float(hotel.get('price').replace('$', '').replace(',', '')),
+                        "source": "SerpApi Google Hotels",
                         "location": f"{city}, {country}",
-                        "brand": "Historical Data",
-                        "stars": 3
+                        "brand": self._extract_brand(hotel.get('name', '')),
+                        "stars": hotel.get('rating', 3)
                     })
-            
-            logger.info(f"Booking.com Calendar: Found {len(competitors)} historical prices")
+
+            if competitors:
+                self._store_competitor_data(f"{city}, {country}", competitors, date)
+                logger.info(f"Successfully scraped {len(competitors)} current competitor hotels")
+                _api_cache[cache_key] = competitors
+
             return competitors
-            
         except Exception as e:
-            logger.error(f"Error scraping Booking.com calendar: {e}")
+            logger.error(f"Error scraping SerpApi Google Hotels: {e}")
             return []
-
-    def _scrape_previous_year_data(self, city: str, country: str, date: str) -> List[Dict]:
-        """Scrape exactly one year ago data from multiple booking sites"""
-        try:
-            # Calculate exactly one year ago
-            target_date = datetime.strptime(date, '%Y-%m-%d')
-            one_year_ago = target_date.replace(year=target_date.year - 1)
-            previous_year_date = one_year_ago.strftime('%Y-%m-%d')
-            checkout_date = (one_year_ago + timedelta(days=1)).strftime('%Y-%m-%d')
-            
-            logger.info(f"Scraping data for same date last year: {previous_year_date}")
-            
-            competitors = []
-            
-            # Try multiple sites for previous year data
-            sites_to_try = [
-                f"https://www.google.com/travel/hotels/{city}?q=hotels%20in%20{city}%20{country}&checkin={previous_year_date}&checkout={checkout_date}&hl=en&gl=us",
-                f"https://www.booking.com/searchresults.html?ss={city}%2C+{country}&checkin={previous_year_date}&checkout={checkout_date}&group_adults=2",
-                f"https://www.expedia.com/Hotel-Search?destination={city}%2C+{country}&startDate={previous_year_date}&endDate={checkout_date}"
-            ]
-            
-            for i, url in enumerate(sites_to_try):
-                try:
-                    response = requests.get(
-                        url='https://app.scrapingbee.com/api/v1/',
-                        params={
-                            'api_key': self.scrapingbee_api_key,
-                            'url': url,
-                            'render_js': 'true',
-                            'wait_for': 4000
-                        },
-                        timeout=60
-                    )
-                    response.raise_for_status()
-
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    
-                    # Generic selectors that work across multiple sites
-                    price_elements = soup.select('span:contains("$"), [data-price], .price, .rate, .cost')
-                    name_elements = soup.select('h1, h2, h3, .hotel-name, .property-name, [data-testid*="title"]')
-                    
-                    # Extract hotel data from previous year
-                    for j, (name_elem, price_elem) in enumerate(zip(name_elements[:10], price_elements[:10])):
-                        if name_elem and price_elem:
-                            name = name_elem.get_text(strip=True)
-                            price_text = price_elem.get_text(strip=True)
-                            
-                            price_match = re.search(r'[\$\€\£]?(\d{1,4})', price_text.replace(',', ''))
-                            if price_match and len(name) > 3:
-                                price = float(price_match.group(1))
-                                if 50 <= price <= 2000:
-                                    competitors.append({
-                                        "name": name,
-                                        "price": price,
-                                        "source": f"Previous Year Data - Site {i+1}",
-                                        "location": f"{city}, {country}",
-                                        "brand": self._extract_brand(name),
-                                        "stars": self._estimate_stars(name, price)
-                                    })
-                    
-                    if len(competitors) >= 8:  # Stop if we have enough data
-                        break
-                        
-                except Exception as site_error:
-                    logger.warning(f"Failed to scrape site {i+1} for previous year data: {site_error}")
-                    continue
-            
-            logger.info(f"Previous Year Data: Found {len(competitors)} hotels")
-            return competitors
-            
-        except Exception as e:
-            logger.error(f"Error scraping previous year data: {e}")
-            return []
-
-    def _scrape_kayak_price_trends(self, city: str, country: str, date: str) -> List[Dict]:
-        """Scrape Kayak price trends and historical data"""
-        try:
-            # Kayak often shows price trends and historical patterns
-            url = f"https://www.kayak.com/hotels/{city}-{country}/price-trends"
-            
-            response = requests.get(
-                url='https://app.scrapingbee.com/api/v1/',
-                params={
-                    'api_key': self.scrapingbee_api_key,
-                    'url': url,
-                    'render_js': 'true',
-                    'wait_for': 5000
-                },
-                timeout=60
-            )
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.content, 'html.parser')
-            competitors = []
-            
-            # Look for price trend data
-            trend_elements = soup.select('.price-trend, [data-price-trend], .historical-price, .trend-price')
-            chart_data = soup.select('[data-chart-price], .chart-value, .price-point')
-            
-            # Extract historical pricing from trends/charts
-            all_price_elements = trend_elements + chart_data
-            for i, element in enumerate(all_price_elements[:12]):
-                price_text = element.get_text(strip=True)
-                price_match = re.search(r'[\$]?(\d{1,4})', price_text.replace(',', ''))
-                if price_match:
-                    competitors.append({
-                        "name": f"Kayak Trend Hotel {i + 1}",
-                        "price": float(price_match.group(1)),
-                        "source": "Kayak Price Trends",
-                        "location": f"{city}, {country}",
-                        "brand": "Historical Trend",
-                        "stars": 3
-                    })
-            
-            logger.info(f"Kayak Price Trends: Found {len(competitors)} trend prices")
-            return competitors
-            
-        except Exception as e:
-            logger.error(f"Error scraping Kayak price trends: {e}")
-            return []
-
-    def _scrape_tripadvisor_historical(self, city: str, country: str, date: str) -> List[Dict]:
-        """Scrape TripAdvisor for historical pricing patterns"""
-        try:
-            url = f"https://www.tripadvisor.com/Hotels-g-d{city}-{country}-Hotels.html"
-            
-            response = requests.get(
-                url='https://app.scrapingbee.com/api/v1/',
-                params={
-                    'api_key': self.scrapingbee_api_key,
-                    'url': url,
-                    'render_js': 'true',
-                    'wait_for': 4000
-                },
-                timeout=60
-            )
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.content, 'html.parser')
-            competitors = []
-            
-            # TripAdvisor selectors for hotels and prices
-            selectors = [
-                ('.property_title', '.price_wrap'),
-                ('[data-automation="hotel-item"]', '.price'),
-                ('.listing_title', '.rate'),
-                ('.property-name', '.price-range')
-            ]
-            
-            for name_sel, price_sel in selectors:
-                hotel_elements = soup.select(name_sel)
-                price_elements = soup.select(price_sel)
-                
-                for hotel_elem, price_elem in zip(hotel_elements[:10], price_elements[:10]):
-                    if hotel_elem and price_elem:
-                        name = hotel_elem.get_text(strip=True)
-                        price_text = price_elem.get_text(strip=True)
-                        
-                        price_match = re.search(r'[\$]?(\d{1,4})', price_text.replace(',', ''))
-                        if price_match and len(name) > 3:
-                            price = float(price_match.group(1))
-                            if 50 <= price <= 2000:
-                                competitors.append({
-                                    "name": name,
-                                    "price": price,
-                                    "source": "TripAdvisor",
-                                    "location": f"{city}, {country}",
-                                    "brand": self._extract_brand(name),
-                                    "stars": self._estimate_stars(name, price)
-                                })
-                
-                if competitors:
-                    break
-            
-            logger.info(f"TripAdvisor: Found {len(competitors)} hotels")
-            return competitors
-            
-        except Exception as e:
-            logger.error(f"Error scraping TripAdvisor: {e}")
-            return []
-
-    def _deduplicate_and_enhance_competitors(self, competitors: List[Dict], city: str, country: str) -> List[Dict]:
-        """Remove duplicates and enhance competitor data"""
-        if not competitors:
-            return []
-        
-        # Remove duplicates based on hotel name similarity
-        unique_competitors = []
-        seen_names = set()
-        
-        for comp in competitors:
-            # Normalize name for comparison
-            normalized_name = re.sub(r'[^\w\s]', '', comp['name'].lower()).strip()
-            
-            # Check if we've seen a similar name
-            is_duplicate = False
-            for seen_name in seen_names:
-                if self._names_are_similar(normalized_name, seen_name):
-                    is_duplicate = True
-                    break
-            
-            if not is_duplicate:
-                seen_names.add(normalized_name)
-                unique_competitors.append(comp)
-        
-        # Sort by price and limit results
-        unique_competitors.sort(key=lambda x: x['price'], reverse=True)
-        
-        # Ensure we have at least 8 competitors for good analysis
-        if len(unique_competitors) < 8:
-            logger.warning(f"Only found {len(unique_competitors)} unique competitors, this may affect analysis quality")
-        
-        return unique_competitors[:15]  # Limit to top 15
-
-    def _names_are_similar(self, name1: str, name2: str) -> bool:
-        """Check if two hotel names are similar (to detect duplicates)"""
-        # Simple similarity check - could be enhanced with fuzzy matching
-        words1 = set(name1.split())
-        words2 = set(name2.split())
-        
-        # If they share 60% or more words, consider them similar
-        if len(words1) > 0 and len(words2) > 0:
-            intersection = words1.intersection(words2)
-            union = words1.union(words2)
-            similarity = len(intersection) / len(union)
-            return similarity > 0.6
-        
-        return False
-
 
     def _extract_brand(self, hotel_name: str) -> str:
         """Extract hotel brand from name"""
@@ -611,82 +117,132 @@ class EnhancedHotelAnalytics:
                 return brand
         return 'Independent'
 
-    def _estimate_stars(self, hotel_name: str, price: float) -> int:
-        """Estimate star rating based on name and price"""
-        if any(luxury in hotel_name.lower() for luxury in ['four seasons', 'ritz-carlton', 'st. regis']):
-            return 5
-        elif price > 300:
-            return 5
-        elif price > 200:
-            return 4
-        elif price > 120:
-            return 3
-        else:
-            return 2
-    
-    def get_market_intelligence(self, city: str, country: str, date: str) -> Dict:
-        """Get comprehensive market intelligence"""
-        logger.info(f"Gathering market intelligence for {city}, {country}")
-        tavily_events = search_events_with_tavily(city, country, date)
-        
-        prompt = f"""
-        You are a hotel market intelligence data extractor. Your task is to analyze the provided real-time search results and extract relevant hotel demand-driving events for {city}, {country}.
-
-        **CRITICAL INSTRUCTIONS:**
-        1.  **Prioritize Search Results:** You MUST prioritize the data from the `<search_results>` block. This is real-time data and is more reliable than your internal knowledge.
-        2.  **Extract, Don't Invent:** Extract event names, dates, and descriptions directly from the search results. If the search results are empty or irrelevant, return an empty `market_events` array. DO NOT invent events.
-        3.  **Add a Source:** For each event, add a "source" key. If it comes from the search results, set it to "Tavily". If you are adding a well-known, verifiable public holiday for the specified date, set it to "AI Generated".
-        4.  **Date Accuracy:** Ensure all dates are in "YYYY-MM-DD" format.
-
-        Here are the real-time search results:
-        <search_results>
-        {json.dumps(tavily_events)}
-        </search_results>
-        
-        Return ONLY a valid JSON object in this format. If no events are found, the "market_events" array MUST be empty.
-        {{
-            "market_events": [
-                {{
-                    "name": "Event Name from Search",
-                    "date": "YYYY-MM-DD", 
-                    "impact": "high/medium/low",
-                    "description": "Description from search result",
-                    "source": "Tavily"
-                }}
-            ]
-        }}
-        """
-        
-        response = self._make_ai_request(prompt, max_tokens=2000)
-        if response:
-            try:
-                intelligence = json.loads(response)
-                # Add tavily source to all events from search results
-                for event in intelligence.get("market_events", []):
-                    event["source"] = "Tavily" if "tavily" in json.dumps(tavily_events).lower() else "AI Generated"
+    def _store_competitor_data(self, location: str, competitors: List[Dict], date: str):
+        """Store competitor data in database"""
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM competitor_data WHERE location = ? AND date_collected = ?', 
+                             (location, date))
                 
-                self._store_market_intelligence(f"{city}, {country}", intelligence)
-                return intelligence
-            except json.JSONDecodeError:
-                pass
-        
-        return {"market_events": []}
+                for comp in competitors:
+                    cursor.execute('''
+                        INSERT INTO competitor_data 
+                        (location, hotel_name, price, distance, source, date_collected)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (
+                        location,
+                        comp.get('name', 'Unknown'),
+                        comp.get('price', 0),
+                        comp.get('location', 'Unknown'),
+                        comp.get('brand', 'Research'),
+                        date
+                    ))
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error storing competitor data: {e}")
 
+    def get_market_intelligence(self, city: str, country: str, date: str) -> Dict:
+        """Get comprehensive market intelligence from PredictHQ and Ticketmaster."""
+        logger.info(f"Gathering market intelligence for {city}, {country}")
+        
+        events = []
+        
+        # PredictHQ
+        if self.predicthq_api_key:
+            try:
+                headers = {
+                    "Authorization": f"Bearer {self.predicthq_api_key}",
+                    "Accept": "application/json"
+                }
+                params = {
+                    "q": f"events in {city}",
+                    "start.gte": date,
+                    "start.lte": (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=7)).strftime('%Y-%m-%d')
+                }
+                response = requests.get("https://api.predicthq.com/v1/events/", headers=headers, params=params)
+                response.raise_for_status()
+                predicthq_events = response.json().get('results', [])
+                for event in predicthq_events:
+                    events.append({
+                        "name": event.get('title'),
+                        "date": event.get('start').split('T')[0],
+                        "impact": "high" if event.get('rank') > 80 else "medium" if event.get('rank') > 60 else "low",
+                        "description": event.get('description') or event.get('category'),
+                        "source": "PredictHQ"
+                    })
+            except Exception as e:
+                logger.error(f"Error fetching from PredictHQ: {e}")
+
+        # Ticketmaster
+        if self.ticketmaster_api_key:
+            try:
+                params = {
+                    'apikey': self.ticketmaster_api_key,
+                    'city': city,
+                    'startDateTime': f"{date}T00:00:00Z",
+                    'endDateTime': f"{(datetime.strptime(date, '%Y-%m-%d') + timedelta(days=7)).strftime('%Y-%m-%d')}T23:59:59Z"
+                }
+                response = requests.get("https://app.ticketmaster.com/discovery/v2/events.json", params=params)
+                response.raise_for_status()
+                ticketmaster_events = response.json().get('_embedded', {}).get('events', [])
+                for event in ticketmaster_events:
+                    events.append({
+                        "name": event.get('name'),
+                        "date": event.get('dates', {}).get('start', {}).get('localDate'),
+                        "impact": "medium",
+                        "description": event.get('info') or event.get('classifications', [{}])[0].get('segment', {}).get('name'),
+                        "source": "Ticketmaster"
+                    })
+            except Exception as e:
+                logger.error(f"Error fetching from Ticketmaster: {e}")
+
+        if events:
+            self._store_market_intelligence(f"{city}, {country}", {"market_events": events})
+            
+        return {"market_events": events}
+
+    def _store_market_intelligence(self, location: str, intel: Dict):
+        """Store market intelligence in database"""
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Store events
+                events = intel.get('market_events', [])
+                for event in events:
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO market_events 
+                        (location, event_name, event_date, impact_level, description)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (
+                        location,
+                        event.get('name', ''),
+                        event.get('date', ''),
+                        event.get('impact', 'low'),
+                        event.get('description', '')
+                    ))
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error storing market intelligence: {e}")
+            
     def get_demand_forecast(self, city: str, country: str, hotel_config: Dict) -> List[Dict]:
         """Generate a 90-day demand forecast."""
         logger.info(f"Generating 90-day demand forecast for {city}, {country}")
         
         prompt = f"""
-        You are a hotel revenue management expert. Create a 90-day demand forecast for a {hotel_config.get('starRating', 3)}-star hotel in {city}, {country}.
-        
-        For each day starting from today, provide a demand level (low, medium, high, peak) and a key driver.
-        
-        Return ONLY a valid JSON array in this format:
+        As a hotel revenue management expert, create a detailed 90-day demand forecast for a {hotel_config.get('starRating', 3)}-star hotel in {city}, {country}.
+        For each day, starting today, provide:
+        1. A demand level (low, medium, high, peak).
+        2. A key driver for the demand (e.g., "Weekend travel", "Business conference", "Holiday", "Sporting event").
+
+        Return the forecast as a valid JSON array of objects, with each object representing a day.
+        Example format:
         [
             {{
                 "date": "YYYY-MM-DD",
-                "demand_level": "low|medium|high|peak",
-                "driver": "Weekend travel|Business travel|Conference|Holiday|etc."
+                "demand_level": "medium",
+                "driver": "Standard business travel"
             }}
         ]
         """
@@ -710,15 +266,21 @@ class EnhancedHotelAnalytics:
         logger.info("Generating upsell opportunities")
         
         prompt = f"""
-        You are a hotel revenue management expert. For a {hotel_config.get('starRating', 3)}-star hotel, suggest 5-7 ancillary revenue and upsell opportunities.
-        
-        Return ONLY a valid JSON array in this format:
+        As a hotel revenue management expert, suggest 5-7 innovative and relevant ancillary revenue and upsell opportunities for a {hotel_config.get('starRating', 3)}-star hotel.
+        For each opportunity, provide:
+        1. A creative name.
+        2. A compelling description.
+        3. A suggested price.
+        4. The type of opportunity (e.g., "service", "upgrade", "package").
+
+        Return the suggestions as a valid JSON array of objects.
+        Example format:
         [
             {{
-                "name": "Early Check-in",
-                "description": "Allow guests to check-in from 10 AM.",
-                "suggested_price": 25.00,
-                "type": "service"
+                "name": "Early Check-in & Welcome Drink",
+                "description": "Arrive as early as 10 AM and enjoy a complimentary welcome drink upon arrival.",
+                "suggested_price": 35.00,
+                "type": "package"
             }}
         ]
         """
@@ -906,7 +468,7 @@ class EnhancedHotelAnalytics:
     
     def _calculate_confidence(self, competitors: List[Dict], events: List[Dict], lead_time: int) -> float:
         """
-        🔥 DYNAMIC CONFIDENCE CALCULATION - 100% based on ScrapingBee data quality
+        🔥 DYNAMIC CONFIDENCE CALCULATION - 100% based on data quality
         
         Analyzes actual scraped data characteristics to calculate confidence:
         1. Data Source Diversity: How many different booking sites provided data
@@ -1038,7 +600,7 @@ class EnhancedHotelAnalytics:
             weighted_confidence = sum(factor[1] for factor in confidence_factors) / len(confidence_factors)
         
         # Log detailed confidence breakdown
-        logger.info("Dynamic Confidence Analysis (ScrapingBee Data Quality):")
+        logger.info("Dynamic Confidence Analysis (Data Quality):")
         for factor_name, factor_score, factor_desc in confidence_factors:
             logger.info(f"  {factor_name}: {factor_score:.3f} ({factor_desc})")
         logger.info(f"  Weighted Final Confidence: {weighted_confidence:.3f} ({weighted_confidence*100:.1f}%)")
@@ -1077,55 +639,6 @@ class EnhancedHotelAnalytics:
             reasons.append("Based on market analysis and demand patterns")
         
         return "; ".join(reasons)
-    
-    def _store_competitor_data(self, location: str, competitors: List[Dict], date: str):
-        """Store competitor data in database"""
-        try:
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('DELETE FROM competitor_data WHERE location = ? AND date_collected = ?', 
-                             (location, date))
-                
-                for comp in competitors:
-                    cursor.execute('''
-                        INSERT INTO competitor_data 
-                        (location, hotel_name, price, distance, source, date_collected)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (
-                        location,
-                        comp.get('name', 'Unknown'),
-                        comp.get('price', 0),
-                        comp.get('location', 'Unknown'),
-                        comp.get('brand', 'Research'),
-                        date
-                    ))
-                conn.commit()
-        except Exception as e:
-            logger.error(f"Error storing competitor data: {e}")
-    
-    def _store_market_intelligence(self, location: str, intel: Dict):
-        """Store market intelligence in database"""
-        try:
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Store events
-                events = intel.get('market_events', [])
-                for event in events:
-                    cursor.execute('''
-                        INSERT OR REPLACE INTO market_events 
-                        (location, event_name, event_date, impact_level, description)
-                        VALUES (?, ?, ?, ?, ?)
-                    ''', (
-                        location,
-                        event.get('name', ''),
-                        event.get('date', ''),
-                        event.get('impact', 'low'),
-                        event.get('description', '')
-                    ))
-                conn.commit()
-        except Exception as e:
-            logger.error(f"Error storing market intelligence: {e}")
 
     def get_historical_performance(self, location: str, days: int = 14) -> Dict:
         """Get historical pricing performance data by scraping data for past 14 days"""
@@ -1257,91 +770,14 @@ class EnhancedHotelAnalytics:
                             
                             logger.info(f"Generated historical data for {date_str}: ${pricing_result['recommended_price']:.2f}, {pricing_result['projected_occupancy']}% occupancy")
                         else:
-                            logger.warning(f"No competitor data available for {date_str} - ScrapingBee may be unavailable or rate limited")
-                            # Skip this date if no data available - rely entirely on web scraping
+                            logger.warning(f"No competitor data available for {date_str} - SerpApi may be unavailable or rate limited")
                         
                         # Small delay to avoid overwhelming the scraping service
                         import time
-                        time.sleep(0.5)
+                        time.sleep(1)
                 
                 conn.commit()
                 logger.info(f"Completed generating {days} days of historical data for {location}")
                 
         except Exception as e:
             logger.error(f"Error generating historical data via scraping: {e}")
-
-# Legacy function wrappers for compatibility
-def get_competitor_prices(city: str, date: str) -> list:
-    """Legacy compatibility function"""
-    analytics = EnhancedHotelAnalytics()
-    country = "Canada"  # Default for legacy calls
-    competitors = analytics.get_comprehensive_competitor_analysis(city, country, date)
-    return [{"name": c.get("name"), "price": c.get("price"), "source": "AI Research"} 
-            for c in competitors]
-
-def get_internal_hotel_data(date: str, total_rooms: int, base_occupancy: int) -> dict:
-    """Get internal hotel metrics"""
-    target_date = datetime.strptime(date, "%Y-%m-%d")
-    lead_time = (target_date - datetime.now()).days
-    day_of_week = target_date.strftime("%A")
-    
-    # Determine pacing based on lead time and day of week
-    if lead_time < 14 and target_date.weekday() in [4, 5]:  # Weekend, short lead
-        pacing = "ahead of forecast"
-    elif lead_time > 60:
-        pacing = "behind forecast"
-    else:
-        pacing = "on track"
-    
-    return {
-        "pacing_status": pacing,
-        "day_of_week": day_of_week,
-        "lead_time_days": max(0, lead_time),
-        "current_occupancy_percent": base_occupancy,
-        "total_rooms": total_rooms,
-        "booking_pace": "strong" if base_occupancy > 70 else "moderate"
-    }
-
-def get_key_performance_indicators(recommended_price: float, 
-                                 current_occupancy: int, 
-                                 total_rooms: int) -> dict:
-    """Calculate KPIs based on pricing recommendation"""
-    rooms_sold = int(total_rooms * (current_occupancy / 100))
-    adr = recommended_price
-    revpar = adr * (current_occupancy / 100)
-    total_revenue = rooms_sold * adr
-    
-    # Calculate additional metrics
-    available_rooms = total_rooms - rooms_sold
-    revenue_per_room = total_revenue / total_rooms if total_rooms > 0 else 0
-    
-    return {
-        "adr": round(adr, 2),
-        "revpar": round(revpar, 2),
-        "projected_occupancy_percent": current_occupancy,
-        "projected_revenue": round(total_revenue, 2),
-        "rooms_sold": rooms_sold,
-        "available_rooms": available_rooms,
-        "revenue_per_room": round(revenue_per_room, 2),
-        "market_penetration": min(100, (current_occupancy / 85) * 100)  # Assuming 85% is market max
-    }
-
-def search_events_with_tavily(city, country, date):
-    """Search for events using Tavily API"""
-    TAVILY_API_KEY = os.getenv('TAVILY_API_KEY')
-    if not TAVILY_API_KEY:
-        logger.warning("Tavily API key not found.")
-        return []
-    try:
-        search_date = datetime.strptime(date, '%Y-%m-%d')
-        # New, more specific query for a wider range of events
-        query = f"major events, concerts, movies, festivals, sports, F1 races, or celebrity appearances in {city}, {country} on or around {search_date.strftime('%B %d, %Y')}"
-        response = requests.post(
-            "https://api.tavily.com/search",
-            json={"api_key": TAVILY_API_KEY, "query": query, "search_depth": "basic", "max_results": 5},
-            timeout=10
-        )
-        return response.json().get('results', []) if response.status_code == 200 else []
-    except Exception as e:
-        logger.error(f"Error searching Tavily events: {e}")
-        return []

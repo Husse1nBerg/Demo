@@ -10,11 +10,6 @@ import {
   Star, Crown, Package, Briefcase, Info, Percent
 } from 'lucide-react';
 
-
-
-
-
-
 const AmpliFiApp = () => {
   // Core State Management
   const [selectedLocation, setSelectedLocation] = useState({ city: 'Montreal', country: 'Canada', region: 'QC' });
@@ -138,62 +133,16 @@ const fetchPriceHistory = useCallback(async () => {
         console.log(`Loaded ${historyData.length} days of historical data`);
         setPriceHistory(historyData);
       } else {
-        console.log('No historical data available, using fallback demo data');
-        generateDemoHistory(); // Fallback to demo data if API fails
+        console.log('No historical data available from the backend.');
       }
     } else {
-      console.error('Failed to fetch historical data, using demo data');
-      generateDemoHistory();
+      console.error('Failed to fetch historical data');
     }
   } catch (error) {
     console.error('Error fetching price history:', error);
-    generateDemoHistory(); // Fallback to demo data on error
   }
 }, [selectedLocation]);
 
-  const generateDemoHistory = useCallback(() => {
-    const history = [];
-    let basePrice = 150 + Math.random() * 50;
-    let baseOccupancy = 65 + Math.random() * 10;
-
-    for (let i = 14; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        
-        let price = basePrice;
-        let occupancy = baseOccupancy;
-
-        // Weekend effect
-        if ([5, 6].includes(date.getDay())) {
-            price *= 1.25;
-            occupancy *= 1.15;
-        }
-
-        // Random event simulation
-        if (Math.random() < 0.2) {
-            price *= 1.4;
-            occupancy *= 1.2;
-        }
-
-        // General noise
-        price *= (0.95 + Math.random() * 0.1);
-        occupancy *= (0.95 + Math.random() * 0.1);
-        
-        occupancy = Math.min(98, Math.max(55, occupancy));
-        price = Math.round(price);
-        
-        history.push({
-            date: date.toISOString().split('T')[0],
-            price,
-            occupancy: Math.round(occupancy),
-            revpar: Math.round(price * (occupancy / 100)),
-            adr: price
-        });
-    }
-    setPriceHistory(history);
-  }, []);
-
-  // Generate initial demo data
  useEffect(() => {
     fetchPriceHistory();
     loadHotels();
@@ -301,20 +250,10 @@ const fetchPriceHistory = useCallback(async () => {
           setKpiData(result.kpis || {});
           setMarketEvents(result.market_events || []);
           setConnectionStatus('connected');
+          
+          // After getting a new recommendation, fetch the updated price history
+          fetchPriceHistory();
 
-          // Add to history
-          const newEntry = {
-            date: targetDate,
-            price: result.recommended_price,
-            occupancy: result.kpis?.projected_occupancy || hotel.baseOccupancy,
-            revpar: result.kpis?.revpar || 0,
-            adr: result.kpis?.adr || result.recommended_price
-          };
-          setPriceHistory(prev => {
-            const filtered = prev.filter(entry => entry.date !== targetDate);
-            const updated = [...filtered, newEntry].sort((a, b) => new Date(a.date) - new Date(b.date));
-            return updated.slice(-15);
-          });
         } else {
           throw new Error(data.error || 'Unknown API error');
         }
@@ -334,7 +273,7 @@ const fetchPriceHistory = useCallback(async () => {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedLocation, targetDate, getCurrentHotel]);
+  }, [selectedLocation, targetDate, getCurrentHotel, fetchPriceHistory]);
 
   // Auto-refresh when in auto mode
   useEffect(() => {
@@ -550,7 +489,7 @@ const fetchPriceHistory = useCallback(async () => {
                     <div className="text-2xl font-bold text-green-600">{marketEvents.length}</div>
                     <div className="text-gray-600">Market Events</div>
                     <div className="text-xs text-gray-500">
-                    {marketEvents.filter(e => e.source === 'Tavily').length} from Live Search, {marketEvents.filter(e => e.source !== 'Tavily').length} from AI
+                    {marketEvents.filter(e => e.source !== 'AI Generated').length} from Live Search, {marketEvents.filter(e => e.source === 'AI Generated').length} from AI
                     </div>
                   </div>
                   <div className="text-center">
@@ -666,7 +605,7 @@ const fetchPriceHistory = useCallback(async () => {
                           <h6 className="font-medium text-blue-900 mb-2">Data Sources</h6>
                           <ul className="space-y-1 text-blue-800">
                             <li>• AI-powered competitor research</li>
-                            <li>• {marketEvents.filter(e => e.source === 'tavily').length > 0 ? 'Real-time event data (Tavily)' : 'Market intelligence analysis'}</li>
+                            <li>• Real-time event data (PredictHQ, Ticketmaster)</li>
                             <li>• Historical pricing patterns</li>
                             <li>• Seasonal demand modeling</li>
                           </ul>
@@ -777,7 +716,7 @@ const fetchPriceHistory = useCallback(async () => {
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={competitorData.slice(0, 10).map(comp => ({
               ...comp,
-              shortName: comp.name.length > 20 ? comp.name.substring(0, 17) + '...' : comp.name
+              shortName: comp.name && comp.name.length > 20 ? comp.name.substring(0, 17) + '...' : comp.name
             }))}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
@@ -835,7 +774,7 @@ const fetchPriceHistory = useCallback(async () => {
               <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                 <div>
                   <p className="font-medium flex items-center">
-                    {event.source === 'Tavily' && <span className="text-red-500 mr-2">●</span>}
+                    {event.source !== 'AI Generated' && <span className="text-red-500 mr-2">●</span>}
                     {event.name || event.event_name}
                   </p>
                   <p className="text-sm text-gray-600">{event.description}</p>
@@ -1229,8 +1168,8 @@ const fetchPriceHistory = useCallback(async () => {
             </span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-gray-600">Tavily Integration</span>
-            <span className="text-sm text-green-600">Real-time Events</span>
+            <span className="text-gray-600">Event APIs</span>
+            <span className="text-sm text-green-600">PredictHQ, Ticketmaster</span>
           </div>
         </div>
       </div>

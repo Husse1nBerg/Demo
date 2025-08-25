@@ -20,10 +20,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["http://localhost:3000"], supports_credentials=True, methods=["GET", "POST", "OPTIONS"])
 
 # API configurations
-TAVILY_API_KEY = os.getenv('TAVILY_API_KEY')
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
 
 
@@ -35,109 +34,6 @@ def parse_json_from_string(text):
     
     json_str = match.group(0)
     return json.loads(json_str)
-
-def create_fallback_data(city, country, date, hotel_config, is_holiday_season, is_major_city, tavily_events):
-    """Create realistic fallback data when AI fails"""
-    base_price = 120
-    if is_major_city:
-        base_price = 180
-    if is_holiday_season:
-        base_price *= 1.4
-    
-    base_occupancy = hotel_config.get('baseOccupancy', 65)
-    if is_holiday_season:
-        base_occupancy = min(95, base_occupancy * 1.3)
-    
-    competitors = []
-    hotel_data = [
-        (f"Four Seasons Hotel {city}", "Four Seasons", 5, 2.5, "Downtown"),
-        (f"The Ritz-Carlton {city}", "Marriott", 5, 2.4, "Downtown"),
-        (f"W {city}", "Marriott", 4, 1.8, "Downtown"),
-        (f"Grand Hyatt {city}", "Hyatt", 4, 1.6, "Downtown"),
-        (f"Hilton {city}", "Hilton", 4, 1.4, "Downtown"),
-        (f"{city} Marriott", "Marriott", 4, 1.5, "City Center"),
-        (f"InterContinental {city}", "IHG", 4, 1.7, "Downtown"),
-        (f"The Westin {city}", "Marriott", 4, 1.6, "Downtown"),
-        (f"Hyatt Regency {city}", "Hyatt", 4, 1.4, "City Center"),
-        (f"Courtyard by Marriott {city}", "Marriott", 3, 1.1, "Downtown"),
-        (f"Hampton Inn & Suites {city}", "Hilton", 3, 0.8, "Downtown"),
-        (f"Holiday Inn Express {city}", "IHG", 3, 0.9, "City Center"),
-        (f"Boutique Hotel {city}", "Independent", 3, 1.2, "Historic District")
-    ]
-    
-    for name, brand, stars, multiplier, location in hotel_data:
-        price_variation = 0.85 + (hash(f"{name}{city}") % 100) / 100 * 0.3
-        price = round(base_price * multiplier * price_variation, 2)
-        competitors.append({
-            "name": name, "price": price, "location": location,
-            "brand": brand, "stars": stars
-        })
-    
-    events = list(tavily_events) if tavily_events else []
-    
-    if is_holiday_season:
-        if "12-24" in date:
-            events.append({
-                "name": "Christmas Eve", "date": date, "impact": "high",
-                "description": "Peak holiday travel and family gatherings", "type": "holiday", "source": "ai"
-            })
-        events.append({
-            "name": "Holiday Season", "date": date,
-            "impact": "high" if "12-24" in date or "12-31" in date else "medium",
-            "description": "Increased tourism and holiday travel demand", "type": "holiday", "source": "ai"
-        })
-    
-    if is_major_city:
-        events.append({
-            "name": f"{city} Winter Events", "date": date, "impact": "medium",
-            "description": "Various winter attractions and business activities", "type": "tourism", "source": "ai"
-        })
-    
-    total_rooms = hotel_config.get('totalRooms', 100)
-    rooms_sold = int(total_rooms * (base_occupancy / 100))
-    
-    return {
-        "recommended_price": round(base_price, 2), "confidence": 0.60,  # Low confidence for fallback data
-        "reasoning": f"Fallback pricing for {city} due to API error. Using standard model for {'holiday season' if is_holiday_season else 'regular season'}.",
-        "detailed_analysis": {
-            "market_overview": "Fallback data used due to an API error. Market analysis could not be performed.",
-            "competitive_landscape": "Fallback data used due to an API error. Competitive landscape could not be analyzed.",
-            "demand_drivers": "Fallback data used due to an API error. Demand drivers could not be analyzed.",
-            "pricing_strategy": "Fallback data used due to an API error. A standard pricing strategy has been applied.",
-            "risk_factors": "Fallback data used due to an API error. Risk factors could not be analyzed.",
-            "revenue_optimization": "Fallback data used due to an API error. Revenue optimization strategies could not be generated."
-        },
-        "competitors": competitors, "market_events": events,
-        "kpis": {
-            "projected_occupancy": round(base_occupancy, 1),
-            "adr": round(base_price, 2),
-            "revpar": round(base_price * (base_occupancy / 100), 2),
-            "projected_revenue": round(rooms_sold * base_price, 2),
-            "rooms_sold": rooms_sold
-        },
-        "market_factors": ["Fallback Data", "Standard Seasonal Model"], "demand_level": "medium",
-        "market_position": "competitive",
-        "pricing_strategy": "standard"
-    }
-
-
-def search_events_with_tavily(city, country, date):
-    if not TAVILY_API_KEY:
-        logger.warning("Tavily API key not found.")
-        return []
-    try:
-        search_date = datetime.strptime(date, '%Y-%m-%d')
-        # New, more specific query for a wider range of events
-        query = f"major events, concerts, movies, festivals, sports, F1 races, or celebrity appearances in {city}, {country} on or around {search_date.strftime('%B %d, %Y')}"
-        response = requests.post(
-            "https://api.tavily.com/search",
-            json={"api_key": TAVILY_API_KEY, "query": query, "search_depth": "basic", "max_results": 5},
-            timeout=10
-        )
-        return response.json().get('results', []) if response.status_code == 200 else []
-    except Exception as e:
-        logger.error(f"Error searching Tavily events: {e}")
-        return []
 
 
 @contextmanager
@@ -198,94 +94,11 @@ def init_database():
         logger.info("Database initialized successfully")
 
 
-def get_ai_recommendation(city, country, date, hotel_config):
-    if not ANTHROPIC_API_KEY:
-        logger.error("ANTHROPIC_API_KEY not set in .env file.")
-        is_holiday_season = "12-" in date or "01-" in date
-        is_major_city = city.lower() in ['san francisco', 'new york']
-        return create_fallback_data(city, country, date, hotel_config, is_holiday_season, is_major_city, [])
-
-    is_holiday_season = "12-" in date or "01-" in date
-    is_major_city = city.lower() in ['san francisco', 'new york', 'los angeles', 'chicago', 'toronto', 'vancouver']
-    
-    # Step 1: Get raw search results from Tavily
-    tavily_events_raw = search_events_with_tavily(city, country, date)
-
-    # Step 2: Pass the raw search results to the AI for intelligent parsing
-    prompt = f"""You are an expert hotel revenue management AI for {city}, {country} on {date}.
-    Hotel Config: {json.dumps(hotel_config)}. Star Rating: {hotel_config.get('starRating', 3)}.
-    
-    Here are raw, real-time search results for events happening around this time. Use this information to inform your analysis:
-    <search_results>
-    {json.dumps(tavily_events_raw)}
-    </search_results>
-
-    Your task is to return a complete analysis in a single JSON object. All keys and sub-keys in the JSON MUST be populated with data. DO NOT return empty objects or arrays.
-
-    CRITICAL REQUIREMENTS:
-    1.  **competitors**: Generate a list of 15+ REAL competitor hotels in {city}. Include their name, brand, star rating, and a realistic price. This array MUST NOT be empty.
-    2.  **detailed_analysis**: You MUST provide a detailed analysis for all sub-sections: "market_overview", "competitive_landscape", "demand_drivers", "pricing_strategy", "risk_factors", and "revenue_optimization". Each must have a 1-2 sentence analysis.
-    3.  **market_events**: From the <search_results> provided, identify the most important events. For each event, you MUST find its CORRECT DATE from the text. Combine these with other events you know of. Format each as an object with 'name', 'date' (in YYYY-MM-DD format), 'impact', 'description', and 'type' keys. Discard irrelevant search results.
-    
-    Return ONLY a valid JSON object with the following keys fully populated: recommended_price, confidence, reasoning, detailed_analysis, competitors, market_events, kpis, market_factors, demand_level, market_position, pricing_strategy.
-    Do not include any other text, formatting, or excuses for missing data."""
-
-    for attempt in range(2):
-        try:
-            try:
-                response = requests.post(
-                    "https://api.anthropic.com/v1/messages",
-                    json={
-                        "model": "claude-3-haiku-20240307", "max_tokens": 4000,
-                        "messages": [{"role": "user", "content": prompt}]
-                    },
-                    headers={
-                        "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY,
-                        "anthropic-version": "2023-06-01"
-                    },
-                    timeout=30
-                )
-                response.raise_for_status()
-            except requests.exceptions.RequestException as e:
-                logger.error(f"AI API request failed on attempt {attempt + 1}: {e}")
-                if attempt == 1:
-                    return create_fallback_data(city, country, date, hotel_config, is_holiday_season, is_major_city, [])
-                time.sleep(1)
-                continue
-
-            content = response.json()['content'][0]['text']
-            result = parse_json_from_string(content)
-            
-            required_keys = ['kpis', 'competitors', 'market_events', 'detailed_analysis']
-            if all(key in result and result[key] is not None for key in required_keys):
-                # We no longer need to manually merge events, the AI now handles it.
-                # We still validate the output format.
-                if 'market_events' in result and isinstance(result['market_events'], list):
-                    for event in result['market_events']:
-                        if not all(k in event for k in ['name', 'date', 'impact']):
-                            raise ValueError(f"Malformed event object from AI: {event}")
-                
-                if not isinstance(result.get('detailed_analysis'), dict):
-                     result['detailed_analysis'] = {}
-                
-                analysis_keys = ["market_overview", "competitive_landscape", "demand_drivers", "pricing_strategy", "risk_factors", "revenue_optimization"]
-                for key in analysis_keys:
-                    result['detailed_analysis'].setdefault(key, "AI analysis for this section was not available.")
-
-                return result
-            else:
-                raise ValueError("Incomplete AI response: Missing one or more required keys.")
-        except (json.JSONDecodeError, ValueError, KeyError) as e:
-            logger.error(f"AI response parsing/validation failed on attempt {attempt + 1}: {e}")
-            if attempt == 1:
-                return create_fallback_data(city, country, date, hotel_config, is_holiday_season, is_major_city, [])
-            time.sleep(1)
-
-    return create_fallback_data(city, country, date, hotel_config, is_holiday_season, is_major_city, [])
-
 # API Routes
-@app.route('/api/hotels', methods=['GET', 'POST'])
+@app.route('/api/hotels', methods=['GET', 'POST', 'OPTIONS'])
 def manage_hotels():
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
     if request.method == 'GET':
         try:
             with get_db_connection() as conn:
@@ -327,8 +140,10 @@ def manage_hotels():
             logger.error(f"Error creating hotel: {e}")
             return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/price-recommendation', methods=['POST'])
+@app.route('/api/price-recommendation', methods=['POST', 'OPTIONS'])
 def get_price_recommendation():
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
     try:
         data = request.get_json()
         location = data.get('location', {})
@@ -340,38 +155,33 @@ def get_price_recommendation():
         
         logger.info(f"Getting price recommendation for {city}, {country} on {date}")
         
-        # Use our new ScrapingBee-based system instead of AI API
         analytics = EnhancedHotelAnalytics()
         
-        # Get competitor data via web scraping
         competitors = analytics.get_comprehensive_competitor_analysis(city, country, date)
-        logger.info(f"Found {len(competitors)} competitors via ScrapingBee")
+        logger.info(f"Found {len(competitors)} competitors via RapidAPI")
         
-        # Get market intelligence 
         market_intel = analytics.get_market_intelligence(city, country, date)
         
-        # Calculate optimal pricing with our new confidence system
         pricing_result = analytics.calculate_optimal_pricing(
             f"{city}, {country}", date, hotel_config, competitors, market_intel
         )
         
-        # Format response to match expected frontend structure
         recommendation = {
             "recommended_price": pricing_result["recommended_price"],
-            "confidence": pricing_result["confidence_score"],  # This is now 0.0-1.0
+            "confidence": pricing_result["confidence_score"],
             "reasoning": pricing_result["reasoning"],
             "competitors": competitors,
             "market_events": market_intel.get("market_events", []),
             "kpis": pricing_result["kpis"],
             "market_position": pricing_result["market_position"],
-            "pricing_strategy": "ScrapingBee Data-Driven",
-            "demand_level": "medium",  # Could be enhanced based on competitor analysis
+            "pricing_strategy": "Data-Driven",
+            "demand_level": "medium",
             "detailed_analysis": {
                 "market_overview": f"Analysis based on {len(competitors)} scraped competitors from {len(set(c.get('source', '') for c in competitors))} sources",
                 "competitive_landscape": pricing_result["competitor_analysis"]["price_range"],
                 "demand_drivers": pricing_result["demand_drivers"],
-                "pricing_strategy": "Dynamic pricing based on real competitor data via ScrapingBee API",
-                "risk_factors": "Data quality dependent on scraping success",
+                "pricing_strategy": "Dynamic pricing based on real competitor data via RapidAPI",
+                "risk_factors": "Data quality dependent on API success",
                 "revenue_optimization": f"Projected RevPAR: ${pricing_result['kpis']['revpar']:.2f}"
             }
         }
@@ -449,8 +259,10 @@ def price_override():
         logger.error(f"Error in price override: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/demand-forecast', methods=['POST'])
+@app.route('/api/demand-forecast', methods=['POST', 'OPTIONS'])
 def demand_forecast():
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
     try:
         data = request.get_json()
         location = data.get('location', {})
@@ -462,8 +274,10 @@ def demand_forecast():
         logger.error(f"Error in demand forecast endpoint: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/ancillary-revenue', methods=['POST'])
+@app.route('/api/ancillary-revenue', methods=['POST', 'OPTIONS'])
 def ancillary_revenue():
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
     try:
         data = request.get_json()
         hotel_config = data.get('hotelConfig', {})
@@ -474,8 +288,10 @@ def ancillary_revenue():
         logger.error(f"Error in ancillary revenue endpoint: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route('/api/direct-booking-intelligence', methods=['POST'])
+@app.route('/api/direct-booking-intelligence', methods=['POST', 'OPTIONS'])
 def direct_booking_intelligence():
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
     try:
         data = request.get_json()
         hotel_config = data.get('hotelConfig', {})
@@ -488,8 +304,10 @@ def direct_booking_intelligence():
 
 
 
-@app.route('/api/historical-performance', methods=['POST'])
+@app.route('/api/historical-performance', methods=['POST', 'OPTIONS'])
 def get_historical_performance_data():
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
     try:
         data = request.get_json()
         location = data.get('location', {})
