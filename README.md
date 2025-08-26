@@ -135,7 +135,7 @@ Hotels must offer **better value propositions** to encourage guests to book dire
 
 ### 2. Convert OTA Guests into Direct Customers (Trojan Horse)  
 -  **At Check-in** → Train staff to upsell direct perks  
-- 🛏 **During Stay** → Place QR code for direct discounts  
+-  **During Stay** → Place QR code for direct discounts  
 -  **After Stay** → Capture guest emails, send exclusive offers  
 
 ### 3. Build a Brand That Bypasses OTAs  
