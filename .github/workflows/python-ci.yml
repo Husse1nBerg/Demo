@@ -1,0 +1,36 @@
+# .github/workflows/python-ci.yml
+
+name: Python CI
+
+# This tells GitHub to run the workflow on every 'push' event to any branch.
+on: [push]
+
+jobs:
+  build:
+    # This job will run on a virtual machine hosted by GitHub, using the latest version of Ubuntu.
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checks out your repository's code so the job can access it.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Sets up a specific version of Python for the job.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # You can change this to match your Python version
+
+      # Step 3: Installs your project's dependencies from the requirements.txt file.
+      # The 'pip install -e .' command is added to make sure your local packages (like 'server') are importable.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r server/requirements.txt
+          pip install pytest pytest-mock # Also install testing libraries
+
+      # Step 4: Runs the pytest command. If any test fails, this step will fail,
+      # and the entire workflow run will be marked as failed.
+      - name: Run tests with pytest
+        run: |
+          pytest
