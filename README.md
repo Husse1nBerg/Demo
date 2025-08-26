@@ -1,4 +1,4 @@
-# AmpliFi Hotel Revenue Management System Clone
+# DEMO Hotel Revenue Management System (RMS)
 
 A professional hotel revenue management system built with React and Flask, featuring AI-powered pricing recommendations.
 
