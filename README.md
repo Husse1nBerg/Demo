@@ -19,9 +19,8 @@ A **professional hotel revenue management system** built with **React** (fronten
 
 ### 1. Backend Setup
 ```bash
-cd server
-pip install -r requirements.txt
-python app.py
+in root 
+python -m server.app
 ```
 
 ### 2. Frontend Setup
