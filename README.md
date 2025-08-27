@@ -25,8 +25,8 @@ python -m server.app
 
 ### 2. Frontend Setup
 ```bash
-in root
-python -m server.app
+cd client
+npm start
 ```
 
 ---
