@@ -26,8 +26,8 @@ python app.py
 
 ### 2. Frontend Setup
 ```bash
-cd client
-npm start
+in root
+python -m server.app
 ```
 
 ---
