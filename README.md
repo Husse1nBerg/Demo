@@ -150,3 +150,30 @@ The **Direct Booking Intelligence Tab** shows:
 
 > Example: “We can save **$3,000/month** in OTA commissions if 25% of guests book directly.”
 
+
+
+
+
+---
+## QA Pipeline
+
+- ✅ 1. Code Quality & Static Checks (Pylint, Bandit)
+- ✅ 2. Unit Testing (Pytest for backend)
+- ✅ 3. Integration Testing (Manual test of frontend + backend)
+- ✅ 4. Regression Testing (Automated with GitHub Actions)
+- ✅ 5. End-to-End Testing: You used Playwright to simulate a real user journey and test the UI.
+- ✅ 6. Performance & Load Testing: You used Locust to find your application's performance limits
+      the performance and load tests using Locust. The goal wasn't to achieve zero errors, but to find the actual performance limits of my current setup.
+
+After a few successful runs at lower user counts (10, 25, and 50 users), I scaled it up significantly to see where it would break.
+Tool: Locust
+Target: My local Flask development server
+Load: 200 concurrent users with a spawn rate of 20 new users per second.
+Result: The application started to fail, reaching a 27% failure rate under this load.
+
+The failures are caused by the limitations of the single-threaded Flask development server, which gets overwhelmed by the queue of requests. 
+The test successfully identified the boundary of what my current setup can handle.
+In a real production environment would be to deploy the app with a production-grade WSGI server like Gunicorn to handle concurrent requests efficiently.
+
+
+
